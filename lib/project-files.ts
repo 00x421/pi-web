@@ -81,3 +81,36 @@ export function listWithWalk(cwd: string): FileListing {
 export async function getProjectFileListing(cwd: string): Promise<FileListing> {
   return (await listWithGit(cwd)) ?? listWithWalk(cwd);
 }
+
+/**
+ * Bounded search for files whose base name is in `wanted`, skipping the same
+ * heavy directories as listWithWalk. Used to reach files the git listing never
+ * reports, because they are ignored (`.env`, logs, build output).
+ */
+export function findFilesByName(cwd: string, wanted: ReadonlySet<string>): string[] {
+  const found: string[] = [];
+  const queue: Array<{ abs: string; rel: string; depth: number }> = [{ abs: cwd, rel: "", depth: 0 }];
+  let scanned = 0;
+  while (queue.length > 0 && scanned < WALK_HARD_CAP) {
+    const { abs, rel, depth } = queue.shift()!;
+    let dirents: fs.Dirent[];
+    try {
+      dirents = fs.readdirSync(abs, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const d of dirents) {
+      if (IGNORED_NAMES.has(d.name) || IGNORED_SUFFIXES.some((s) => d.name.endsWith(s))) continue;
+      scanned += 1;
+      const childRel = rel ? `${rel}/${d.name}` : d.name;
+      if (d.isDirectory()) {
+        if (depth + 1 <= MAX_WALK_DEPTH) {
+          queue.push({ abs: path.join(abs, d.name), rel: childRel, depth: depth + 1 });
+        }
+      } else if (d.isFile() && wanted.has(d.name.toLowerCase())) {
+        found.push(childRel);
+      }
+    }
+  }
+  return found;
+}

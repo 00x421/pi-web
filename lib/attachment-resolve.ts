@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { getProjectFileListing } from "./project-files";
+import { findFilesByName, getProjectFileListing } from "./project-files";
 
 /** Minimal descriptor of a dropped file, as the browser reports it. */
 export interface DroppedFileDescriptor {
@@ -52,9 +52,16 @@ export async function indexProjectFiles(
   const wanted = new Set(names.map((name) => name.toLowerCase()));
   const { files } = await getProjectFileListing(cwd);
 
+  const paths = new Set(files.filter((relativePath) => wanted.has(baseName(relativePath).toLowerCase())));
+  // The git listing omits ignored files, so a dropped .env or build artifact
+  // would never match. Fall back to a bounded walk whenever a name is still
+  // missing a candidate.
+  if (!names.every((name) => [...paths].some((relativePath) => baseName(relativePath).toLowerCase() === name.toLowerCase()))) {
+    for (const relativePath of findFilesByName(cwd, wanted)) paths.add(relativePath);
+  }
+
   const indexed: IndexedProjectFile[] = [];
-  for (const relativePath of files) {
-    if (!wanted.has(baseName(relativePath).toLowerCase())) continue;
+  for (const relativePath of paths) {
     try {
       const stat = fs.statSync(path.join(cwd, relativePath));
       if (stat.isFile()) indexed.push({ path: relativePath, size: stat.size });
