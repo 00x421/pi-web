@@ -336,6 +336,7 @@ export const enLocale: LocalePlugin = {
     "chat.recall": "Recall to input",
     "chat.recallTitle": "Remove all queued messages and put them back into the input box for editing",
     "chat.retrying": "Retrying ({attempt}/{max})…",
+    "chat.dropAttachFailed": "Could not attach the dropped file: {error}",
     "chat.loadingCommands": "Loading commands...",
     "chat.slashCommands": "Slash commands · {label}",
     "chat.tabEnter": "Tab / Enter",

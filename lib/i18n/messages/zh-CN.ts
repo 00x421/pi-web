@@ -336,6 +336,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.recall": "移回输入框",
     "chat.recallTitle": "移除所有排队消息并将其放回输入框编辑",
     "chat.retrying": "正在重试（{attempt}/{max}）…",
+    "chat.dropAttachFailed": "拖入的文件上传失败：{error}",
     "chat.loadingCommands": "正在加载命令...",
     "chat.slashCommands": "斜杠命令 · {label}",
     "chat.tabEnter": "Tab / Enter",

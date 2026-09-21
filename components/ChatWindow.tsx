@@ -17,6 +17,8 @@ import { AnsiText } from "./AnsiText";
 import { useI18n } from "@/hooks/useI18n";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
+import { uploadDroppedFiles } from "@/lib/attachments-client";
+import { buildAtMentionText } from "@/lib/file-fuzzy";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { AppUpdateResponse } from "@/lib/api-types";
@@ -278,7 +280,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput, setNoticePaused,
+    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput, setNoticePaused, addNotice,
     isAutoModelSelection,
     agentPhase,
     isNew,
@@ -710,9 +712,26 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [ctxKey, onContextUsageChange]);
   useEffect(() => () => { onContextUsageChange?.(null); }, [onContextUsageChange]);
 
-  const onDrop = useCallback((files: File[]) => {
-    chatInputRef?.current?.addImages(files);
-  }, [chatInputRef]);
+  const onDrop = useCallback(async (files: File[]) => {
+    const images = files.filter((file) => file.type.startsWith("image/"));
+    if (images.length > 0) chatInputRef?.current?.addImages(images);
+
+    // A browser hides the local path of a dropped file, so non-image drops are
+    // copied to the server first and the input receives the stored path.
+    const attachments = files.filter((file) => !file.type.startsWith("image/"));
+    if (attachments.length === 0) return;
+    try {
+      const paths = await uploadDroppedFiles(attachments);
+      chatInputRef?.current?.insertText(paths.map((filePath) => buildAtMentionText(filePath, false)).join(""));
+    } catch (uploadError) {
+      addNotice({
+        type: "error",
+        message: t("chat.dropAttachFailed", {
+          error: uploadError instanceof Error ? uploadError.message : String(uploadError),
+        }),
+      });
+    }
+  }, [chatInputRef, addNotice, t]);
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 
