@@ -17,7 +17,7 @@ import { AnsiText } from "./AnsiText";
 import { useI18n } from "@/hooks/useI18n";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
-import { uploadDroppedFiles } from "@/lib/attachments-client";
+import { resolveProjectDrops, uploadDroppedFiles } from "@/lib/attachments-client";
 import { buildAtMentionText } from "@/lib/file-fuzzy";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
@@ -716,12 +716,19 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     const images = files.filter((file) => file.type.startsWith("image/"));
     if (images.length > 0) chatInputRef?.current?.addImages(images);
 
-    // A browser hides the local path of a dropped file, so non-image drops are
-    // copied to the server first and the input receives the stored path.
+    // A browser hides the local path of a dropped file: files that already live
+    // in the project keep their real path, everything else is copied to the
+    // attachments directory first and the input receives the stored path.
     const attachments = files.filter((file) => !file.type.startsWith("image/"));
     if (attachments.length === 0) return;
     try {
-      const paths = await uploadDroppedFiles(attachments);
+      const projectCwd = session?.cwd ?? newSessionCwd ?? undefined;
+      const inProject = projectCwd
+        ? await resolveProjectDrops(projectCwd, attachments)
+        : new Map<string, string>();
+      const remaining = attachments.filter((file) => !inProject.has(file.name));
+      const uploaded = remaining.length > 0 ? await uploadDroppedFiles(remaining) : [];
+      const paths = [...inProject.values(), ...uploaded];
       chatInputRef?.current?.insertText(paths.map((filePath) => buildAtMentionText(filePath, false)).join(""));
     } catch (uploadError) {
       addNotice({
@@ -731,7 +738,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         }),
       });
     }
-  }, [chatInputRef, addNotice, t]);
+  }, [chatInputRef, addNotice, t, session?.cwd, newSessionCwd]);
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 

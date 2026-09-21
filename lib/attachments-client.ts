@@ -19,3 +19,23 @@ export async function uploadDroppedFiles(files: File[]): Promise<string[]> {
     .map((file) => file.path)
     .filter((value): value is string => Boolean(value));
 }
+
+/**
+ * Asks the server which dropped files already live inside the project, so they
+ * can be referenced by their real path instead of being copied. Best effort: if
+ * the lookup fails, every dropped file is copied as usual.
+ */
+export async function resolveProjectDrops(cwd: string, files: File[]): Promise<Map<string, string>> {
+  const response = await fetch("/api/attachments/resolve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cwd, files: files.map((file) => ({ name: file.name, size: file.size })) }),
+  });
+  if (!response.ok) return new Map();
+
+  const body = await response.json() as { resolved?: { name?: string; path?: string }[] };
+  const resolved = (body.resolved ?? []).filter(
+    (entry): entry is { name: string; path: string } => Boolean(entry?.name && entry?.path),
+  );
+  return new Map(resolved.map((entry) => [entry.name, entry.path]));
+}
