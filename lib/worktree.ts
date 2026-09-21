@@ -62,7 +62,12 @@ async function git(cwd: string, args: string[], timeoutMs = 10_000): Promise<str
 
 function realPathOrSelf(filePath: string): string {
   try {
-    return realpathSync(filePath);
+    // Use the native implementation: the JS one preserves Windows 8.3 short
+    // names (`C:\Users\LINLIN~1`) while git prints the long form, so samePath()
+    // rejected two spellings of the same directory and a cwd under a short name
+    // was never recognised as a top level. `fs.promises.realpath`, which the
+    // file APIs use, already resolves the long form.
+    return realpathSync.native(filePath);
   } catch {
     return filePath;
   }
