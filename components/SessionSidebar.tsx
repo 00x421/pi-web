@@ -383,7 +383,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
   const [homeDir, setHomeDir] = useState<string>("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [projectFilter, setProjectFilter] = useState("");
   const [wtFilter, setWtFilter] = useState("");
   const [customPathOpen, setCustomPathOpen] = useState(false);
   const [customPathValue, setCustomPathValue] = useState(loadLastCustomCwd);
@@ -913,7 +912,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false);
-        setProjectFilter("");
       }
       if (wtDropdownRef.current && !wtDropdownRef.current.contains(e.target as Node)) {
         setWtDropdownOpen(false);
@@ -960,10 +958,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [onNewSession]);
 
   const recentProjects = getRecentProjects(allSessions);
-  const showProjectFilter = recentProjects.length > 8;
-  const visibleProjects = projectFilter.trim()
-    ? recentProjects.filter((project) => project.root.toLowerCase().includes(projectFilter.trim().toLowerCase()))
-    : recentProjects;
 
   // Sessions of every worktree in the selected project are shown together
   const selectedProject = projectFor(selectedCwd);
@@ -988,8 +982,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // Short folder labels, with the parent folder added when two projects would
   // otherwise share a name; the full path stays in the header's tooltip.
   const projectLabels = useMemo(
-    () => projectDisplayNames(visibleProjects.map((project) => project.root)),
-    [visibleProjects],
+    () => projectDisplayNames(recentProjects.map((project) => project.root)),
+    [recentProjects],
   );
 
   const showWorktreeSwitcher = Boolean(
@@ -1044,14 +1038,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         kind: "header";
         key: string;
         height: number;
-        project: (typeof visibleProjects)[number];
+        project: (typeof recentProjects)[number];
         sessionCount: number;
       }
     | { kind: "session"; key: string; height: number; family: ReturnType<typeof listSessionFamilies>[number] };
 
   const sidebarRows = useMemo(() => {
     const rows: SidebarRow[] = [];
-    for (const project of visibleProjects) {
+    for (const project of recentProjects) {
       const sessions = sessionsForProject(allSessions, project.key);
       rows.push({
         kind: "header",
@@ -1066,7 +1060,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       }
     }
     return rows;
-  }, [visibleProjects, allSessions, isGroupExpanded]);
+  }, [recentProjects, allSessions, isGroupExpanded]);
 
   const rowHeights = useMemo(() => sidebarRows.map((row) => row.height), [sidebarRows]);
   const rowTopOffsets = useMemo(() => rowOffsets(rowHeights), [rowHeights]);
@@ -1243,79 +1237,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               overflow: "hidden",
             }}
           >
-              {showProjectFilter && (
-                <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
-                  <input
-                    value={projectFilter}
-                    onChange={(e) => setProjectFilter(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        setProjectFilter("");
-                        setDropdownOpen(false);
-                      }
-                    }}
-                     placeholder={t("sidebar.filterProjects")}
-                    autoFocus
-                    style={{
-                      width: "100%",
-                      fontSize: 11,
-                      fontFamily: "var(--font-mono)",
-                      padding: "5px 8px",
-                      border: "1px solid var(--border)",
-                      borderRadius: 5,
-                      outline: "none",
-                      background: "var(--bg)",
-                      color: "var(--text)",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-              )}
-              <div style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto" }}>
-                {visibleProjects.map((project) => (
-                  <button
-                    key={project.key}
-                    onClick={() => {
-                      setSelectedCwd(project.root);
-                      setProjectFilter("");
-                      setCustomPathOpen(false);
-                      setCustomPathError(null);
-                      setDropdownOpen(false);
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 7,
-                      width: "100%",
-                      padding: "8px 10px",
-                      background: "var(--bg)",
-                      border: "none",
-                      borderBottom: "1px solid var(--border)",
-                      color: project.key === selectedProject?.key ? "var(--text)" : "var(--text-muted)",
-                      cursor: "pointer",
-                      textAlign: "left",
-                      fontSize: 11,
-                      fontFamily: "var(--font-mono)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                    title={project.root}
-                  >
-                    {project.key === selectedProject?.key && (
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                        <polyline points="1.5 5 4 7.5 8.5 2.5" />
-                      </svg>
-                    )}
-                    {project.key !== selectedProject?.key && <span style={{ width: 10, flexShrink: 0 }} />}
-                    <PathLabel text={displayCwd(project.root, homeDir)} style={{ flex: 1 }} />
-                    {showProjectActivity(projectActivity.get(project.key), t)}
-                  </button>
-                ))}
-                {visibleProjects.length === 0 && projectFilter.trim() && (
-                   <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-dim)" }}>{t("sidebar.noMatchingProjects")}</div>
-                )}
-              </div>
+              {/* Directory actions and the worktree switcher only: every project
+                  is listed as a collapsible group below. */}
 
               {/* Default cwd shortcut */}
               {!customPathOpen && (
@@ -1329,7 +1252,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     padding: "8px 10px",
                     background: "none",
                     border: "none",
-                    borderTop: visibleProjects.length > 0 ? "1px solid var(--border)" : "none",
+                    borderTop: "none",
                     color: "var(--text-muted)",
                     cursor: "pointer",
                     textAlign: "left",
