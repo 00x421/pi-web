@@ -337,6 +337,7 @@ export const zhTWLocale: LocalePlugin = {
     "chat.recallTitle": "將所有佇列中的訊息移回輸入框以便編輯",
     "chat.retrying": "正在重試（{attempt}/{max}）…",
     "chat.dropAttachFailed": "拖入的檔案上傳失敗：{error}",
+    "chat.dropCopied": "已將 {count} 個檔案複製到附件目錄（在本專案裡沒找到）",
     "chat.loadingCommands": "正在載入命令...",
     "chat.slashCommands": "斜線命令 · {label}",
     "chat.tabEnter": "Tab / Enter",

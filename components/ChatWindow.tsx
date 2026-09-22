@@ -730,6 +730,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       const uploaded = remaining.length > 0 ? await uploadDroppedFiles(remaining) : [];
       const paths = [...inProject.values(), ...uploaded];
       chatInputRef?.current?.insertText(paths.map((filePath) => buildAtMentionText(filePath, false)).join(""));
+      // Say where a copy landed: the alternative — silently referencing a copy of
+      // a file that lives elsewhere — is what makes this feature look broken.
+      if (uploaded.length > 0) {
+        addNotice({ type: "info", message: t("chat.dropCopied", { count: uploaded.length }) });
+      }
     } catch (uploadError) {
       addNotice({
         type: "error",

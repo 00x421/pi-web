@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import path from "path";
 import { getAllowedFileRoots, isFilePathAllowed, isWindowsAbsolutePath } from "@/lib/file-access";
 import {
   indexProjectFiles,
@@ -44,8 +45,22 @@ export async function POST(request: NextRequest) {
   const candidates = await indexProjectFiles(cwd, files.map((file) => file.name));
   const resolved = files.flatMap((file) => {
     const match = pickProjectFile(file, candidates);
-    return match ? [{ name: file.name, path: match }] : [];
+    // Absolute path is what the input references: a relative one is correct but
+    // reads as "not a real path" and breaks when the session cwd changes.
+    return match ? [{ name: file.name, path: path.join(cwd, match), relativePath: match }] : [];
   });
+
+  // Temporary diagnostics: shows exactly what a drop asked for and why it did
+  // or did not resolve to a project file.
+  console.log(
+    "[attachments/resolve]",
+    JSON.stringify({
+      cwd,
+      requested: files.map((file) => `${file.name} (${file.size}B)`),
+      candidates: candidates.length,
+      resolved: resolved.map((entry) => entry.path),
+    }),
+  );
 
   return NextResponse.json({ resolved });
 }
