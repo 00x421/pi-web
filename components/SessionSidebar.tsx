@@ -1150,6 +1150,40 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setGroupExpanded(key, next);
   }, [isGroupExpanded]);
 
+  // Switching a group has to move the whole view, not just the list: the
+  // directory field, the file explorer and the git state all read the selected
+  // directory, and the open session follows when the project already has one.
+  const activateProject = useCallback((project: { key: string; root: string }) => {
+    setSelectedCwd(project.root);
+    setGroupOverrides((previous) => ({ ...previous, [project.key]: true }));
+    setGroupExpanded(project.key, true);
+    const latest = sessionsForProject(allSessions, project.key)
+      .reduce<SessionInfo | null>(
+        (best, session) => (!best || session.modified > best.modified ? session : best),
+        null,
+      );
+    if (latest) {
+      onSelectSession(latest);
+      return;
+    }
+    // A project without sessions opens an empty draft there, the same way the
+    // group's + button does — so the explorer and the chat never disagree.
+    const tempId = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    onNewSession?.(tempId, project.root);
+  }, [allSessions, onSelectSession, onNewSession]);
+
+  const handleGroupClick = useCallback((project: { key: string; root: string }) => {
+    // The group you are already in keeps the plain collapse/expand toggle; any
+    // other group switches to it, which is what picking a project means here.
+    if (selectedProject && normalizeRoot(selectedProject.root) === normalizeRoot(project.root)) {
+      toggleGroup(project.key);
+      return;
+    }
+    activateProject(project);
+  }, [selectedProject, toggleGroup, activateProject]);
+
   // One flat row list keeps virtual scrolling simple: headers and session rows
   // have different heights, so the visible range is computed from row heights.
   type SidebarRow =
@@ -1946,7 +1980,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                       branch={groupBranches[row.project.key] ?? null}
                       onToggleIsolation={() => toggleIsolation(row.project.key)}
                       onHide={() => hideProject(row.project.key)}
-                      onToggle={() => toggleGroup(row.project.key)}
+                      onToggle={() => handleGroupClick(row.project)}
                       onNewSession={() => handleNewSessionInProject(row.project.root)}
                     />
                   </div>
