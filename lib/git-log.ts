@@ -19,10 +19,15 @@ export interface GitCommit {
 export const GIT_LOG_DEFAULT_LIMIT = 50;
 export const GIT_LOG_MAX_LIMIT = 200;
 
-/** Keeps a hand-written ?limit= from asking for an unbounded history. */
+/** Keeps a hand-written ?limit= from asking for an unbounded history. An
+ *  absent limit means "the default", which is not the same as 0. */
 export function clampGitLogLimit(limit: unknown): number {
-  const value = typeof limit === "number" && Number.isFinite(limit) ? Math.floor(limit) : GIT_LOG_DEFAULT_LIMIT;
-  return Math.min(Math.max(value, 1), GIT_LOG_MAX_LIMIT);
+  if (limit === null || limit === undefined) return GIT_LOG_DEFAULT_LIMIT;
+  const value = typeof limit === "string"
+    ? (limit.trim() === "" ? Number.NaN : Number(limit.trim()))
+    : limit;
+  if (typeof value !== "number" || !Number.isFinite(value)) return GIT_LOG_DEFAULT_LIMIT;
+  return Math.min(Math.max(Math.floor(value), 1), GIT_LOG_MAX_LIMIT);
 }
 
 export function parseGitLog(stdout: string): GitCommit[] {

@@ -27,12 +27,14 @@ function normalizeRoot(root: string): string {
   return root.replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
 }
 
-/** One row of the commit history panel, shown in place of the file tree. */
+/** One row of the commit history panel, shown in place of the file tree.
+ *  Two lines: the subject needs the width, and the author/date would squeeze it. */
 function commitRowStyle(dim: boolean): CSSProperties {
   return {
     display: "flex",
-    alignItems: "center",
-    gap: 8,
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 2,
     width: "100%",
     padding: "6px 10px",
     background: "none",
@@ -2128,30 +2130,32 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                       title={t("explorer.gitHistoryCopy", { hash: commit.hash })}
                       style={commitRowStyle(false)}
                     >
-                      <span
-                        style={{
-                          flexShrink: 0,
-                          fontSize: 10,
-                          fontFamily: "var(--font-mono)",
-                          color: copiedCommit === commit.hash ? "#4ade80" : "var(--accent)",
-                        }}
-                      >
-                        {copiedCommit === commit.hash ? t("explorer.gitHistoryCopied") : commit.short}
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            fontSize: 10,
+                            fontFamily: "var(--font-mono)",
+                            color: copiedCommit === commit.hash ? "#4ade80" : "var(--accent)",
+                          }}
+                        >
+                          {copiedCommit === commit.hash ? t("explorer.gitHistoryCopied") : commit.short}
+                        </span>
+                        <span
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            fontSize: 11,
+                          }}
+                        >
+                          {commit.subject}
+                        </span>
                       </span>
-                      <span
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          fontSize: 11,
-                        }}
-                      >
-                        {commit.subject}
-                      </span>
-                      <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-dim)" }}>
-                        {commit.author} · {commit.date.slice(0, 10)}
+                      <span style={{ fontSize: 10, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {commit.author} · {commit.date.slice(0, 16).replace("T", " ")}
                       </span>
                     </button>
                   ))}

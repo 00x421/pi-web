@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Access denied" }, { status: 403 });
   }
 
-  const limit = clampGitLogLimit(Number(url.searchParams.get("limit")));
+  const limit = clampGitLogLimit(url.searchParams.get("limit"));
   try {
     return NextResponse.json({ commits: await readGitLog(cwd, limit) });
   } catch (error) {
