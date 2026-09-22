@@ -1,5 +1,5 @@
 /**
- * Per-workspace "last open session" memory.
+ * Per-workspace "last open session" memory and sidebar group state.
  *
  * Switching to a workspace (project root or cwd) restores the session the user
  * had open there last, instead of landing on a blank new-session page. Without
@@ -8,6 +8,8 @@
  * The workspace key is the server-provided project identity when known, so
  * Windows path variants and all worktrees of one repo share one memory slot.
  * Transient and legacy session objects fall back to projectRoot/cwd.
+ *
+ * The sidebar also remembers, per project key, whether its group was expanded.
  *
  * Stored in localStorage; best-effort (silently ignored when unavailable).
  */
@@ -95,4 +97,49 @@ export function workspaceKeyOf(session: {
   projectKey?: string | null;
 }): string {
   return session.projectKey ?? session.projectRoot ?? session.cwd;
+}
+
+const GROUP_STATE_KEY = "pi-web:group-expanded";
+
+function readGroupState(storage: StorageLike): Record<string, boolean> {
+  const raw = storage.getItem(GROUP_STATE_KEY);
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Every remembered group state, keyed by project key. An absent key means
+ * "follow the default" (the group of the open session is expanded, others are
+ * collapsed).
+ */
+export function readGroupExpanded(
+  storage: StorageLike | null = getBrowserStorage(),
+): Record<string, boolean> {
+  if (!storage) return {};
+  try {
+    return readGroupState(storage);
+  } catch {
+    return {};
+  }
+}
+
+export function setGroupExpanded(
+  projectKey: string,
+  expanded: boolean,
+  storage: StorageLike | null = getBrowserStorage(),
+): void {
+  if (!storage) return;
+  try {
+    const state = readGroupState(storage);
+    state[projectKey] = expanded;
+    storage.setItem(GROUP_STATE_KEY, JSON.stringify(state));
+  } catch {
+    // storage unavailable — the UI state still applies for this session
+  }
 }

@@ -7,7 +7,8 @@ import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
-import { workspaceKeyOf } from "@/lib/workspace-memory";
+import { readGroupExpanded, setGroupExpanded, workspaceKeyOf } from "@/lib/workspace-memory";
+import { getVisibleRowRange, rowOffsets, totalRowHeight } from "@/lib/virtual-list";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { useI18n } from "@/hooks/useI18n";
 import { DirectoryPicker } from "./DirectoryPicker";
@@ -17,6 +18,8 @@ import { SessionSearch } from "./SessionSearch";
 // Fixed row height for the session list. SessionItem renders at exactly this
 // height, so the list can be windowed (only the visible slice is mounted).
 const SESSION_LIST_ITEM_HEIGHT = 54;
+/** Height of a project group header row in the session list. */
+const GROUP_HEADER_HEIGHT = 32;
 
 export function getSessionListIndices(count: number, scrollTop: number, viewportHeight: number, focusedIndex = -1): number[] {
   const overscan = 8;
@@ -945,6 +948,17 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     onNewSession?.(tempId, selectedCwd);
   }, [selectedCwd, onNewSession]);
 
+  /** Same as handleNewSession, but scoped to one group's directory. */
+  const handleNewSessionInProject = useCallback((root: string) => {
+    if (!root) return;
+    // Generate a temporary UUID client-side — no backend call needed.
+    const tempId = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    setSelectedCwd(root);
+    onNewSession?.(tempId, root);
+  }, [onNewSession]);
+
   const recentProjects = getRecentProjects(allSessions);
   const showProjectFilter = recentProjects.length > 8;
   const visibleProjects = projectFilter.trim()
@@ -971,9 +985,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     [projectActivity, selectedProject],
   );
 
-  const filteredSessions = selectedProject
-    ? sessionsForProject(allSessions, selectedProject.key)
-    : allSessions;
   const showWorktreeSwitcher = Boolean(
     worktreeState?.isGit
     && worktreeState.isTopLevel
@@ -1003,14 +1014,69 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         }
       : null);
 
-  const sessionFamilies = listSessionFamilies(filteredSessions);
-
-  const virtualIndices = getSessionListIndices(
-    sessionFamilies.length,
-    listScrollTop,
-    listViewportH,
-    sessionFamilies.findIndex((family) => family.root.id === focusedSessionId),
+  // Every recent project is listed as its own group. Groups start collapsed,
+  // except the one holding the open session (or the most recent one when no
+  // session is open), so the sidebar always shows where you are.
+  const storedGroupState = useMemo(() => readGroupExpanded(), []);
+  const [groupOverrides, setGroupOverrides] = useState<Record<string, boolean>>({});
+  const autoExpandedKey = selectedProject?.key ?? recentProjects[0]?.key;
+  const isGroupExpanded = useCallback(
+    (key: string) => groupOverrides[key] ?? storedGroupState[key] ?? key === autoExpandedKey,
+    [groupOverrides, storedGroupState, autoExpandedKey],
   );
+  const toggleGroup = useCallback((key: string) => {
+    const next = !isGroupExpanded(key);
+    setGroupOverrides((previous) => ({ ...previous, [key]: next }));
+    setGroupExpanded(key, next);
+  }, [isGroupExpanded]);
+
+  // One flat row list keeps virtual scrolling simple: headers and session rows
+  // have different heights, so the visible range is computed from row heights.
+  type SidebarRow =
+    | {
+        kind: "header";
+        key: string;
+        height: number;
+        project: (typeof visibleProjects)[number];
+        sessionCount: number;
+      }
+    | { kind: "session"; key: string; height: number; family: ReturnType<typeof listSessionFamilies>[number] };
+
+  const sidebarRows = useMemo(() => {
+    const rows: SidebarRow[] = [];
+    for (const project of visibleProjects) {
+      const sessions = sessionsForProject(allSessions, project.key);
+      rows.push({
+        kind: "header",
+        key: `header:${project.key}`,
+        height: GROUP_HEADER_HEIGHT,
+        project,
+        sessionCount: sessions.length,
+      });
+      if (!isGroupExpanded(project.key)) continue;
+      for (const family of listSessionFamilies(sessions)) {
+        rows.push({ kind: "session", key: `session:${family.root.id}`, height: SESSION_LIST_ITEM_HEIGHT, family });
+      }
+    }
+    return rows;
+  }, [visibleProjects, allSessions, isGroupExpanded]);
+
+  const rowHeights = useMemo(() => sidebarRows.map((row) => row.height), [sidebarRows]);
+  const rowTopOffsets = useMemo(() => rowOffsets(rowHeights), [rowHeights]);
+  const { start: firstVisibleRow, end: lastVisibleRow } = getVisibleRowRange(rowHeights, listScrollTop, listViewportH);
+  // Mounted rows: the visible slice plus the focused row, so scrolling cannot
+  // discard a row that is being renamed inline.
+  const renderedRows = useMemo(() => {
+    const indices: number[] = [];
+    for (let index = firstVisibleRow; index < lastVisibleRow; index += 1) indices.push(index);
+    if (focusedSessionId) {
+      const focusedIndex = sidebarRows.findIndex(
+        (row) => row.kind === "session" && row.family.root.id === focusedSessionId,
+      );
+      if (focusedIndex >= 0 && !indices.includes(focusedIndex)) indices.push(focusedIndex);
+    }
+    return indices.map((index) => ({ index, row: sidebarRows[index] }));
+  }, [sidebarRows, firstVisibleRow, lastVisibleRow, focusedSessionId]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -1689,20 +1755,41 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             {error}
           </div>
         )}
-        {!loading && !error && sessionFamilies.length === 0 && (
+        {!loading && !error && sidebarRows.length === 0 && (
           <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>
             {t("sidebar.noSessions")}
           </div>
         )}
-        {sessionFamilies.length > 0 && (
+        {sidebarRows.length > 0 && (
           <div
             style={{
               position: "relative",
-              height: sessionFamilies.length * SESSION_LIST_ITEM_HEIGHT,
+              height: totalRowHeight(rowHeights),
             }}
           >
-            {virtualIndices.map((index) => {
-              const family = sessionFamilies[index];
+            {renderedRows.map(({ index: rowIndex, row }) => {
+              const rowStyle = { position: "absolute" as const, top: rowTopOffsets[rowIndex], left: 0, right: 0 };
+
+              if (row.kind === "header") {
+                const activity = projectActivity.get(row.project.key);
+                return (
+                  <div key={row.key} style={rowStyle}>
+                    <ProjectGroupHeader
+                      label={displayCwd(row.project.root, homeDir)}
+                      title={row.project.root}
+                      active={selectedProject?.key === row.project.key}
+                      expanded={isGroupExpanded(row.project.key)}
+                      running={activity?.running ?? 0}
+                      unread={activity?.unread ?? 0}
+                      sessionCount={row.sessionCount}
+                      onToggle={() => toggleGroup(row.project.key)}
+                      onNewSession={() => handleNewSessionInProject(row.project.root)}
+                    />
+                  </div>
+                );
+              }
+
+              const family = row.family;
               const familySessions = [family.root, ...family.subagents];
               const displaySession = family.latestModified === family.root.modified
                 ? family.root
@@ -1710,10 +1797,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               // Bubble blur after the input's save handler before unpinning the row.
               return (
                 <div
-                  key={family.root.id}
+                  key={row.key}
                   onFocus={() => setFocusedSessionId(family.root.id)}
                   onBlur={() => setFocusedSessionId(null)}
-                  style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 0, right: 0 }}
+                  style={rowStyle}
                 >
                   <SessionItem
                     session={displaySession}
@@ -1988,6 +2075,115 @@ function showProjectActivity(
         </span>
       )}
     </span>
+  );
+}
+
+/** Collapsible project group header: name, activity badges, new-session button. */
+function ProjectGroupHeader({
+  label,
+  title,
+  active,
+  expanded,
+  running,
+  unread,
+  sessionCount,
+  onToggle,
+  onNewSession,
+}: {
+  label: string;
+  title: string;
+  active: boolean;
+  expanded: boolean;
+  running: number;
+  unread: number;
+  sessionCount: number;
+  onToggle: () => void;
+  onNewSession: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        height: GROUP_HEADER_HEIGHT,
+        padding: "0 8px 0 6px",
+        background: active ? "var(--bg-hover)" : "transparent",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-label={title}
+        title={title}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          flex: 1,
+          minWidth: 0,
+          background: "none",
+          border: "none",
+          padding: "4px 2px",
+          cursor: "pointer",
+          color: active ? "var(--text)" : "var(--text-muted)",
+          textAlign: "left",
+        }}
+      >
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={{ flexShrink: 0, transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.12s ease" }}
+        >
+          <polyline points="9 6 15 12 9 18" />
+        </svg>
+        <span style={{ fontSize: 12, fontWeight: active ? 600 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {label}
+        </span>
+        {sessionCount > 0 && (
+          <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+            {sessionCount}
+          </span>
+        )}
+        {showProjectActivity({ running, unread }, (key: string) => t(key))}
+      </button>
+      <button
+        type="button"
+        onClick={onNewSession}
+        title={t("sidebar.newSessionTitle", { path: title })}
+        aria-label={t("sidebar.newSessionTitle", { path: title })}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 20,
+          height: 20,
+          flexShrink: 0,
+          background: "none",
+          border: "none",
+          borderRadius: 5,
+          color: "var(--text-muted)",
+          cursor: "pointer",
+          padding: 0,
+        }}
+        onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
+        onMouseLeave={(event) => { event.currentTarget.style.background = "none"; }}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+      </button>
+    </div>
   );
 }
 
