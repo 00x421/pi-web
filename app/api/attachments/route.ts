@@ -6,6 +6,7 @@ import { allowFileRoot } from "@/lib/allowed-roots";
 import {
   ATTACHMENTS_FORM_FIELD,
   MAX_ATTACHMENT_BYTES,
+  findExistingAttachment,
   isSafeAttachmentName,
   uniqueAttachmentName,
 } from "@/lib/attachments";
@@ -49,10 +50,25 @@ export async function POST(request: NextRequest) {
   allowFileRoot(directory);
 
   const taken = new Set(await fs.readdir(directory));
+  // Sizes of the requested names, so a repeat drop of the same file reuses the
+  // existing copy instead of stacking up `-1`, `-2` … duplicates.
+  const existing: { name: string; size: number }[] = [];
+  for (const file of files) {
+    if (!taken.has(file.name)) continue;
+    const stat = await fs.stat(path.join(directory, file.name)).catch(() => null);
+    if (stat?.isFile()) existing.push({ name: file.name, size: stat.size });
+  }
+
   const saved: { name: string; path: string; size: number }[] = [];
   for (const file of files) {
+    const reusedName = findExistingAttachment({ name: file.name, size: file.size }, existing);
+    if (reusedName) {
+      saved.push({ name: reusedName, path: path.join(directory, reusedName), size: file.size });
+      continue;
+    }
     const name = uniqueAttachmentName(file.name, taken);
     taken.add(name);
+    existing.push({ name, size: file.size });
     const target = path.join(directory, name);
     await fs.writeFile(target, Buffer.from(await file.arrayBuffer()));
     saved.push({ name, path: target, size: file.size });

@@ -31,3 +31,22 @@ export function uniqueAttachmentName(fileName: string, taken: Iterable<string>):
     if (!names.has(candidate)) return candidate;
   }
 }
+
+/** A copy already in the attachments directory, as read from disk. */
+export interface ExistingAttachment {
+  name: string;
+  size: number;
+}
+
+/**
+ * Name of an existing copy of the same file, or null. Dropping the same file
+ * twice must not pile up `file.pdf`, `file-1.pdf`, `file-2.pdf`…: the same name
+ * and byte size is the same file.
+ */
+export function findExistingAttachment(
+  dropped: { name: string; size: number },
+  existing: readonly ExistingAttachment[],
+): string | null {
+  const match = existing.find((entry) => entry.name === dropped.name && entry.size === dropped.size);
+  return match ? match.name : null;
+}
