@@ -100,9 +100,10 @@ export function workspaceKeyOf(session: {
 }
 
 const GROUP_STATE_KEY = "pi-web:group-expanded";
+const ISOLATED_PROJECTS_KEY = "pi-web:isolated-projects";
 
-function readGroupState(storage: StorageLike): Record<string, boolean> {
-  const raw = storage.getItem(GROUP_STATE_KEY);
+function readBooleanMap(storageKey: string, storage: StorageLike): Record<string, boolean> {
+  const raw = storage.getItem(storageKey);
   if (!raw) return {};
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -110,6 +111,31 @@ function readGroupState(storage: StorageLike): Record<string, boolean> {
     return parsed as Record<string, boolean>;
   } catch {
     return {};
+  }
+}
+
+function readBooleanMapSafe(storageKey: string, storage: StorageLike | null): Record<string, boolean> {
+  if (!storage) return {};
+  try {
+    return readBooleanMap(storageKey, storage);
+  } catch {
+    return {};
+  }
+}
+
+function writeBooleanMapEntry(
+  storageKey: string,
+  name: string,
+  value: boolean,
+  storage: StorageLike | null,
+): void {
+  if (!storage) return;
+  try {
+    const state = readBooleanMap(storageKey, storage);
+    state[name] = value;
+    storage.setItem(storageKey, JSON.stringify(state));
+  } catch {
+    // storage unavailable — the UI state still applies for this session
   }
 }
 
@@ -121,12 +147,7 @@ function readGroupState(storage: StorageLike): Record<string, boolean> {
 export function readGroupExpanded(
   storage: StorageLike | null = getBrowserStorage(),
 ): Record<string, boolean> {
-  if (!storage) return {};
-  try {
-    return readGroupState(storage);
-  } catch {
-    return {};
-  }
+  return readBooleanMapSafe(GROUP_STATE_KEY, storage);
 }
 
 export function setGroupExpanded(
@@ -134,12 +155,23 @@ export function setGroupExpanded(
   expanded: boolean,
   storage: StorageLike | null = getBrowserStorage(),
 ): void {
-  if (!storage) return;
-  try {
-    const state = readGroupState(storage);
-    state[projectKey] = expanded;
-    storage.setItem(GROUP_STATE_KEY, JSON.stringify(state));
-  } catch {
-    // storage unavailable — the UI state still applies for this session
-  }
+  writeBooleanMapEntry(GROUP_STATE_KEY, projectKey, expanded, storage);
+}
+
+/**
+ * Projects whose new sessions should run in a throwaway git worktree instead of
+ * the real directory, so an agent cannot touch the working checkout.
+ */
+export function readIsolatedProjects(
+  storage: StorageLike | null = getBrowserStorage(),
+): Record<string, boolean> {
+  return readBooleanMapSafe(ISOLATED_PROJECTS_KEY, storage);
+}
+
+export function setProjectIsolated(
+  projectKey: string,
+  isolated: boolean,
+  storage: StorageLike | null = getBrowserStorage(),
+): void {
+  writeBooleanMapEntry(ISOLATED_PROJECTS_KEY, projectKey, isolated, storage);
 }

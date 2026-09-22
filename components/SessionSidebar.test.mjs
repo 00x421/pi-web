@@ -128,3 +128,11 @@ test("hides subagent rows and aggregates their state into the main session row",
   assert.match(source, /familySessions\.some\(\(session\) => runningSessionIds\.has\(session\.id\)\)/);
   assert.doesNotMatch(source, /function SessionTreeItem/);
 });
+
+test("sandbox sessions open in a throwaway worktree", () => {
+  assert.match(source, /if \(isProjectIsolated\(root\)\) \{/);
+  assert.match(source, /branch: `pi\/sandbox-\$\{stamp\}`/);
+  assert.match(source, /setProjectIsolated\(key, next\)/);
+  // Falling back to the real directory keeps the button useful without Git.
+  assert.match(source, /setSelectedCwd\(root\);\s*onNewSession\?\.\(tempId, root\);/);
+});
