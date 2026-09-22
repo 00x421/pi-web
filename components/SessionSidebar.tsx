@@ -27,6 +27,11 @@ const OLDER_THAN_DAYS = 7;
 /** "Show N hidden projects" row at the end of the group list. */
 const HIDDEN_ROW_HEIGHT = 30;
 
+/** Trailing separators and Windows case differences must not create a second group. */
+function normalizeRoot(root: string): string {
+  return root.replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
+}
+
 export function getSessionListIndices(count: number, scrollTop: number, viewportHeight: number, focusedIndex = -1): number[] {
   const overscan = 8;
   const visibleCount = Math.ceil((viewportHeight || 600) / SESSION_LIST_ITEM_HEIGHT) + overscan * 2;
@@ -1019,7 +1024,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // project you are working in would make the sidebar look broken.
   const projects = useMemo(() => {
     if (!selectedProject) return recentProjects;
-    if (recentProjects.some((project) => project.key === selectedProject.key)) return recentProjects;
+    // Compare roots, not keys: the key of a folder that has no session yet is
+    // the raw path, while a session of the same folder is keyed by the server's
+    // normalized identity — comparing keys would list the folder twice.
+    const selectedRoot = normalizeRoot(selectedProject.root);
+    if (recentProjects.some((project) => normalizeRoot(project.root) === selectedRoot)) {
+      return recentProjects;
+    }
     return [selectedProject, ...recentProjects];
   }, [recentProjects, selectedProject]);
   const [hiddenProjects, setHiddenProjects] = useState<Record<string, boolean>>(() => readHiddenProjects());
