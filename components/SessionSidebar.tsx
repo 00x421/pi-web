@@ -7,7 +7,7 @@ import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, projectDisplayName, projectDisplayNames, sessionsForProject, splitByAge } from "@/lib/project-groups";
-import { readGroupExpanded, readIsolatedProjects, setGroupExpanded, setProjectIsolated, workspaceKeyOf } from "@/lib/workspace-memory";
+import { readGroupExpanded, readHiddenProjects, readIsolatedProjects, setGroupExpanded, setProjectHidden, setProjectIsolated, workspaceKeyOf } from "@/lib/workspace-memory";
 import { getVisibleRowRange, rowOffsets, totalRowHeight } from "@/lib/virtual-list";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { useI18n } from "@/hooks/useI18n";
@@ -24,6 +24,8 @@ const GROUP_HEADER_HEIGHT = 32;
 const OLDER_ROW_HEIGHT = 30;
 /** Sessions untouched for longer than this are hidden behind that toggle. */
 const OLDER_THAN_DAYS = 7;
+/** "Show N hidden projects" row at the end of the group list. */
+const HIDDEN_ROW_HEIGHT = 30;
 
 export function getSessionListIndices(count: number, scrollTop: number, viewportHeight: number, focusedIndex = -1): number[] {
   const overscan = 8;
@@ -1011,6 +1013,62 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // Sessions of every worktree in the selected project are shown together
   const selectedProject = projectFor(selectedCwd);
 
+  // The directory the user is in is a project too, even before its first session
+  // exists, so the list always shows where the directory field points. A hidden
+  // project stays listed while it is the selected one, otherwise hiding the
+  // project you are working in would make the sidebar look broken.
+  const projects = useMemo(() => {
+    if (!selectedProject) return recentProjects;
+    if (recentProjects.some((project) => project.key === selectedProject.key)) return recentProjects;
+    return [selectedProject, ...recentProjects];
+  }, [recentProjects, selectedProject]);
+  const [hiddenProjects, setHiddenProjects] = useState<Record<string, boolean>>(() => readHiddenProjects());
+  const visibleProjects = useMemo(
+    () => projects.filter((project) => !hiddenProjects[project.key] || project.key === selectedProject?.key),
+    [projects, hiddenProjects, selectedProject],
+  );
+  const hiddenProjectCount = useMemo(
+    () => projects.filter((project) => hiddenProjects[project.key] && project.key !== selectedProject?.key).length,
+    [projects, hiddenProjects, selectedProject],
+  );
+  const hideProject = useCallback((key: string) => {
+    setProjectHidden(key, true);
+    setHiddenProjects((previous) => ({ ...previous, [key]: true }));
+  }, []);
+  const showHiddenProjects = useCallback(() => {
+    for (const project of projects) {
+      if (hiddenProjects[project.key]) setProjectHidden(project.key, false);
+    }
+    setHiddenProjects({});
+  }, [projects, hiddenProjects]);
+
+  // Branch per group: the header of each group says which branch that project is
+  // on, so a single git label at the top is no longer needed to tell them apart.
+  const [groupBranches, setGroupBranches] = useState<Record<string, string | null>>({});
+  useEffect(() => {
+    const missing = visibleProjects.filter((project) => !(project.key in groupBranches));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const entries: Array<[string, string | null]> = [];
+      for (const project of missing) {
+        try {
+          const response = await fetch(`/api/worktrees?cwd=${encodeURIComponent(project.root)}`);
+          const body = await response.json() as { branch?: string | null; isGit?: boolean };
+          entries.push([project.key, body.isGit === false ? null : body.branch ?? null]);
+        } catch {
+          entries.push([project.key, null]);
+        }
+      }
+      if (!cancelled && entries.length > 0) {
+        setGroupBranches((previous) => ({ ...previous, ...Object.fromEntries(entries) }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleProjects, groupBranches]);
+
   // Per-project activity counts (running / unread) for the workspace selector.
   // Uses the same stable server key as the project list and filtering.
   const projectActivity = useMemo(
@@ -1031,8 +1089,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // Short folder labels, with the parent folder added when two projects would
   // otherwise share a name; the full path stays in the header's tooltip.
   const projectLabels = useMemo(
-    () => projectDisplayNames(recentProjects.map((project) => project.root)),
-    [recentProjects],
+    () => projectDisplayNames(projects.map((project) => project.root)),
+    [projects],
   );
 
   const showWorktreeSwitcher = Boolean(
@@ -1070,7 +1128,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const storedGroupState = useMemo(() => readGroupExpanded(), []);
   const [groupOverrides, setGroupOverrides] = useState<Record<string, boolean>>({});
   const [showOlderProjects, setShowOlderProjects] = useState<Record<string, boolean>>({});
-  const autoExpandedKey = selectedProject?.key ?? recentProjects[0]?.key;
+  const autoExpandedKey = selectedProject?.key ?? projects[0]?.key;
   const isGroupExpanded = useCallback(
     (key: string) => groupOverrides[key] ?? storedGroupState[key] ?? key === autoExpandedKey,
     [groupOverrides, storedGroupState, autoExpandedKey],
@@ -1092,11 +1150,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         sessionCount: number;
       }
     | { kind: "session"; key: string; height: number; family: ReturnType<typeof listSessionFamilies>[number] }
-    | { kind: "older"; key: string; height: number; projectKey: string; count: number; shown: boolean };
+    | { kind: "older"; key: string; height: number; projectKey: string; count: number; shown: boolean }
+    | { kind: "hidden"; key: string; height: number; count: number };
 
   const sidebarRows = useMemo(() => {
     const rows: SidebarRow[] = [];
-    for (const project of recentProjects) {
+    for (const project of visibleProjects) {
       const sessions = sessionsForProject(allSessions, project.key);
       rows.push({
         kind: "header",
@@ -1123,8 +1182,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         });
       }
     }
+    if (hiddenProjectCount > 0) {
+      rows.push({ kind: "hidden", key: "hidden-projects", height: HIDDEN_ROW_HEIGHT, count: hiddenProjectCount });
+    }
     return rows;
-  }, [recentProjects, allSessions, isGroupExpanded, showOlderProjects]);
+  }, [visibleProjects, allSessions, isGroupExpanded, showOlderProjects, hiddenProjectCount]);
 
   const rowHeights = useMemo(() => sidebarRows.map((row) => row.height), [sidebarRows]);
   const rowTopOffsets = useMemo(() => rowOffsets(rowHeights), [rowHeights]);
@@ -1814,6 +1876,49 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 );
               }
 
+              if (row.kind === "hidden") {
+                return (
+                  <div key={row.key} style={rowStyle}>
+                    <button
+                      type="button"
+                      onClick={showHiddenProjects}
+                      title={t("sidebar.showHiddenTitle")}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        width: "100%",
+                        height: HIDDEN_ROW_HEIGHT,
+                        padding: "0 10px 0 24px",
+                        background: "none",
+                        border: "none",
+                        color: "var(--text-dim)",
+                        cursor: "pointer",
+                        fontSize: 11,
+                        textAlign: "left",
+                      }}
+                    >
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                        style={{ flexShrink: 0 }}
+                      >
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M1 1l22 22" />
+                        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                      </svg>
+                      {t("sidebar.showHidden", { count: row.count })}
+                    </button>
+                  </div>
+                );
+              }
+
               if (row.kind === "header") {
                 const activity = projectActivity.get(row.project.key);
                 return (
@@ -1827,7 +1932,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                       unread={activity?.unread ?? 0}
                       sessionCount={row.sessionCount}
                       isolated={isProjectIsolated(row.project.key)}
+                      branch={groupBranches[row.project.key] ?? null}
                       onToggleIsolation={() => toggleIsolation(row.project.key)}
+                      onHide={() => hideProject(row.project.key)}
                       onToggle={() => toggleGroup(row.project.key)}
                       onNewSession={() => handleNewSessionInProject(row.project.root)}
                     />
@@ -2134,8 +2241,10 @@ function ProjectGroupHeader({
   unread,
   sessionCount,
   isolated,
+  branch,
   onToggle,
   onToggleIsolation,
+  onHide,
   onNewSession,
 }: {
   label: string;
@@ -2146,8 +2255,10 @@ function ProjectGroupHeader({
   unread: number;
   sessionCount: number;
   isolated: boolean;
+  branch: string | null;
   onToggle: () => void;
   onToggleIsolation: () => void;
+  onHide: () => void;
   onNewSession: () => void;
 }) {
   const { t } = useI18n();
@@ -2204,7 +2315,78 @@ function ProjectGroupHeader({
             {sessionCount}
           </span>
         )}
+        {branch && (
+          <span
+            title={branch}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 3,
+              maxWidth: 96,
+              flexShrink: 1,
+              fontSize: 10,
+              color: "var(--text-dim)",
+              fontFamily: "var(--font-mono)",
+              overflow: "hidden",
+            }}
+          >
+            <svg
+              width="9"
+              height="9"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              style={{ flexShrink: 0 }}
+            >
+              <line x1="6" y1="3" x2="6" y2="15" />
+              <circle cx="18" cy="6" r="3" />
+              <circle cx="6" cy="18" r="3" />
+              <path d="M18 9a9 9 0 0 1-9 9" />
+            </svg>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{branch}</span>
+          </span>
+        )}
         {showProjectActivity({ running, unread }, (key: string) => t(key))}
+      </button>
+      <button
+        type="button"
+        onClick={onHide}
+        title={t("sidebar.hideGroup")}
+        aria-label={t("sidebar.hideGroup")}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 20,
+          height: 20,
+          flexShrink: 0,
+          background: "none",
+          border: "none",
+          padding: 0,
+          borderRadius: 4,
+          color: "var(--text-dim)",
+          cursor: "pointer",
+        }}
+      >
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M3 3l18 18" />
+          <path d="M10.6 5.1A9 9 0 0 1 12 5c7 0 11 7 11 7a17.8 17.8 0 0 1-3.1 4" />
+          <path d="M6.1 6.1A17.5 17.5 0 0 0 1 12s4 7 11 7a9.9 9.9 0 0 0 4-0.8" />
+        </svg>
       </button>
       <button
         type="button"

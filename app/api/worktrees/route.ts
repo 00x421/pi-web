@@ -14,7 +14,7 @@ async function checkCwdAllowed(cwd: string): Promise<NextResponse | null> {
   return null;
 }
 
-// GET /api/worktrees?cwd=  →  { projectRoot, projectKey, isGit, isTopLevel, currentWorktreePath, worktrees }
+// GET /api/worktrees?cwd=  →  { projectRoot, projectKey, isGit, isTopLevel, branch, currentWorktreePath, worktrees }
 export async function GET(req: Request) {
   try {
     const cwd = new URL(req.url).searchParams.get("cwd");
@@ -45,6 +45,9 @@ export async function GET(req: Request) {
       projectKey: projectIdentityKey(project.projectRoot),
       isGit,
       isTopLevel: project.isTopLevel,
+      // Each project group shows its own branch, so the sidebar does not need a
+      // second request per group.
+      branch: project.branch,
       currentWorktreePath,
       worktrees,
     });
