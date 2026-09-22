@@ -6,7 +6,7 @@ import { listSessionFamilies } from "@/lib/session-family";
 import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
-import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
+import { getProjectActivity, getRecentProjects, projectDisplayName, projectDisplayNames, sessionsForProject } from "@/lib/project-groups";
 import { readGroupExpanded, setGroupExpanded, workspaceKeyOf } from "@/lib/workspace-memory";
 import { getVisibleRowRange, rowOffsets, totalRowHeight } from "@/lib/virtual-list";
 import { formatRelativeTime } from "@/lib/i18n/format";
@@ -985,6 +985,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     [projectActivity, selectedProject],
   );
 
+  // Short folder labels, with the parent folder added when two projects would
+  // otherwise share a name; the full path stays in the header's tooltip.
+  const projectLabels = useMemo(
+    () => projectDisplayNames(visibleProjects.map((project) => project.root)),
+    [visibleProjects],
+  );
+
   const showWorktreeSwitcher = Boolean(
     worktreeState?.isGit
     && worktreeState.isTopLevel
@@ -1775,7 +1782,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 return (
                   <div key={row.key} style={rowStyle}>
                     <ProjectGroupHeader
-                      label={displayCwd(row.project.root, homeDir)}
+                      label={projectLabels.get(row.project.root) ?? projectDisplayName(row.project.root)}
                       title={row.project.root}
                       active={selectedProject?.key === row.project.key}
                       expanded={isGroupExpanded(row.project.key)}

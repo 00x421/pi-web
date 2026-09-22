@@ -51,3 +51,47 @@ export function sessionsForProject(
 ): SessionInfo[] {
   return sessions.filter((session) => workspaceKeyOf(session) === projectKey);
 }
+
+/** Last path segment of a project root, tolerating either separator. */
+export function projectDisplayName(root: string): string {
+  const trimmed = root.replace(/[\\/]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  const name = cut === -1 ? trimmed : trimmed.slice(cut + 1);
+  // "C:\\" trims down to "C:"; an empty result falls back to the raw root.
+  return name || root;
+}
+
+function parentDisplayName(root: string): string {
+  const trimmed = root.replace(/[\\/]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (cut <= 0) return "";
+  return projectDisplayName(trimmed.slice(0, cut));
+}
+
+/**
+ * Sidebar labels for a set of project roots: the bare folder name, with the
+ * parent folder prepended when two projects would otherwise share a name
+ * (`D:/a/pi-web` vs `D:/b/pi-web` -> `a/pi-web` vs `b/pi-web`).
+ */
+export function projectDisplayNames(roots: readonly string[]): Map<string, string> {
+  const buckets = new Map<string, string[]>();
+  for (const root of roots) {
+    const name = projectDisplayName(root);
+    const bucket = buckets.get(name);
+    if (bucket) bucket.push(root);
+    else buckets.set(name, [root]);
+  }
+
+  const labels = new Map<string, string>();
+  for (const [name, group] of buckets) {
+    for (const root of group) {
+      if (group.length === 1) {
+        labels.set(root, name);
+        continue;
+      }
+      const parent = parentDisplayName(root);
+      labels.set(root, parent ? `${parent}/${name}` : name);
+    }
+  }
+  return labels;
+}
