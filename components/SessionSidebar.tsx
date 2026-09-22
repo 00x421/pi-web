@@ -9,6 +9,7 @@ import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, projectDisplayName, projectDisplayNames, sessionsForProject } from "@/lib/project-groups";
 import { readGroupExpanded, readHiddenProjects, readIsolatedProjects, setGroupExpanded, setProjectHidden, setProjectIsolated, workspaceKeyOf } from "@/lib/workspace-memory";
 import { getVisibleRowRange, rowOffsets, totalRowHeight } from "@/lib/virtual-list";
+import type { GitCommit } from "@/lib/git-log";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { useI18n } from "@/hooks/useI18n";
 import { DirectoryPicker } from "./DirectoryPicker";
@@ -24,6 +25,22 @@ const GROUP_HEADER_HEIGHT = 32;
 /** Trailing separators and Windows case differences must not create a second group. */
 function normalizeRoot(root: string): string {
   return root.replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
+}
+
+/** One row of the commit history panel, shown in place of the file tree. */
+function commitRowStyle(dim: boolean): CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    padding: "6px 10px",
+    background: "none",
+    border: "none",
+    color: dim ? "var(--text-dim)" : "var(--text)",
+    cursor: dim ? "default" : "pointer",
+    textAlign: "left",
+  };
 }
 
 export function getSessionListIndices(count: number, scrollTop: number, viewportHeight: number, focusedIndex = -1): number[] {
@@ -1049,6 +1066,44 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setHiddenProjects((previous) => ({ ...previous, [key]: true }));
   }, []);
 
+  // Commit history of the directory in the explorer. Kept outside FileExplorer:
+  // it is a different view, and the tree carries enough state already. Read-only
+  // — nothing here can rewrite history, which stays a job for the agent.
+  const [gitLogOpen, setGitLogOpen] = useState(false);
+  const [gitLogCommits, setGitLogCommits] = useState<GitCommit[]>([]);
+  const [gitLogLoading, setGitLogLoading] = useState(false);
+  const [gitLogError, setGitLogError] = useState<string | null>(null);
+  const [copiedCommit, setCopiedCommit] = useState<string | null>(null);
+  const gitLogCwd = selectedCwd ?? selectedCwdProp ?? null;
+  useEffect(() => {
+    if (!gitLogOpen || !gitLogCwd) return;
+    let cancelled = false;
+    setGitLogLoading(true);
+    setGitLogError(null);
+    void (async () => {
+      try {
+        const response = await fetch(`/api/git/log?cwd=${encodeURIComponent(gitLogCwd)}`);
+        const body = await response.json() as { commits?: GitCommit[]; error?: string };
+        if (cancelled) return;
+        setGitLogCommits(body.commits ?? []);
+        setGitLogError(body.error ? t("explorer.gitHistoryUnavailable") : null);
+      } catch (error) {
+        if (!cancelled) setGitLogError(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (!cancelled) setGitLogLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gitLogOpen, gitLogCwd, explorerKey, t]);
+  const copyCommitHash = useCallback((hash: string) => {
+    void navigator.clipboard?.writeText(hash).then(() => {
+      setCopiedCommit(hash);
+      window.setTimeout(() => setCopiedCommit((current) => (current === hash ? null : current)), 1500);
+    }).catch(() => setCopiedCommit(null));
+  }, []);
+
   // Branch per group: the header of each group says which branch that project is
   // on, so a single git label at the top is no longer needed to tell them apart.
   const [groupBranches, setGroupBranches] = useState<Record<string, string | null>>({});
@@ -2004,6 +2059,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             )}
             {explorerOpen && (
               <ToolbarIconButton
+                onClick={() => setGitLogOpen((open) => !open)}
+                title={t("sidebar.gitHistory")}
+                ariaPressed={gitLogOpen}
+                color={gitLogOpen ? "var(--accent)" : "var(--text-dim)"}
+                background={gitLogOpen ? "var(--bg-selected)" : "none"}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3 2" />
+                </svg>
+              </ToolbarIconButton>
+            )}
+            {explorerOpen && (
+              <ToolbarIconButton
                 onClick={() => fileExplorerRef.current?.openUploadPicker()}
                 disabled={explorerUploadBusy}
                 title={t("sidebar.uploadFilesTitle")}
@@ -2044,6 +2113,50 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           </div>
           {explorerOpen && (
             <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+              {gitLogOpen ? (
+                <div style={{ padding: "4px 0" }}>
+                  {gitLogCommits.length === 0 && (
+                    <div style={commitRowStyle(true)}>
+                      {gitLogLoading ? t("explorer.gitHistoryLoading") : gitLogError ?? t("explorer.gitHistoryEmpty")}
+                    </div>
+                  )}
+                  {gitLogCommits.map((commit) => (
+                    <button
+                      key={commit.hash}
+                      type="button"
+                      onClick={() => copyCommitHash(commit.hash)}
+                      title={t("explorer.gitHistoryCopy", { hash: commit.hash })}
+                      style={commitRowStyle(false)}
+                    >
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          fontSize: 10,
+                          fontFamily: "var(--font-mono)",
+                          color: copiedCommit === commit.hash ? "#4ade80" : "var(--accent)",
+                        }}
+                      >
+                        {copiedCommit === commit.hash ? t("explorer.gitHistoryCopied") : commit.short}
+                      </span>
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontSize: 11,
+                        }}
+                      >
+                        {commit.subject}
+                      </span>
+                      <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-dim)" }}>
+                        {commit.author} · {commit.date.slice(0, 10)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
               <FileExplorer
                 ref={fileExplorerRef}
                 cwd={selectedCwd ?? selectedCwdProp!}
@@ -2057,6 +2170,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 fileSearchOpen={fileSearchOpen}
                 onFileSearchOpenChange={setFileSearchOpen}
               />
+              )}
             </div>
           )}
         </div>
