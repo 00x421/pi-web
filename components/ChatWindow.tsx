@@ -1408,6 +1408,8 @@ function NoticeShelf({ notices, floating = false, onPauseChange }: { notices: No
             : notice.type === "success"
               ? "#10b981"
               : "var(--accent)";
+        // With no type dot, keep the severity readable on errors and warnings only.
+        const severityColor = notice.type === "error" || notice.type === "warning" ? color : undefined;
         return (
           <div
             key={notice.id}
@@ -1422,13 +1424,13 @@ function NoticeShelf({ notices, floating = false, onPauseChange }: { notices: No
             }}
             style={{
               display: "flex",
-              // Top-align children so the type dot sits by the first line on multi-line toasts
-              alignItems: "flex-start",
-              gap: 10,
+              // Text-only toast: the message is centered both ways
+              alignItems: "center",
+              justifyContent: "center",
               minHeight: 60,
               height: "auto",
               // 整体高度上限：超出后由文本区内部滚动承担（见下方 span 的 overflowY），
-              // 容器自身保持 hidden，小圆点固定在顶部不随文本滚动
+              // 容器自身保持 hidden
               maxHeight: NOTICE_MAX_HEIGHT_PX,
               // The floating wrapper is pointerEvents:"none" (click-through by design),
               // so the toast itself must opt back into interactivity or hover events never reach it
@@ -1456,24 +1458,12 @@ function NoticeShelf({ notices, floating = false, onPauseChange }: { notices: No
               padding: "0 12px",
             }}
           >
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: color,
-                flexShrink: 0,
-                // Align with the optical center of the first text line: 14px vertical
-                // padding + (21px line box - 7px dot) / 2
-                marginTop: 21,
-              }}
-            />
             {/* Full text by default: pre-line preserves \n (nowrap/normal collapse
                 newlines into spaces) and long lines wrap instead of truncating;
                 content taller than the cap scrolls inside the text area */}
             <span
               tabIndex={0}
-              style={{ padding: "14px 0", minWidth: 0, maxWidth: "100%", maxHeight: NOTICE_TEXT_MAX_HEIGHT_PX, overflowY: "auto", scrollbarWidth: "thin", whiteSpace: "pre-line", wordBreak: "break-word" }}
+              style={{ padding: "14px 0", minWidth: 0, maxWidth: "100%", maxHeight: NOTICE_TEXT_MAX_HEIGHT_PX, overflowY: "auto", scrollbarWidth: "thin", whiteSpace: "pre-line", wordBreak: "break-word", textAlign: "center", color: severityColor }}
             >
               {notice.message}
             </span>
