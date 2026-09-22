@@ -262,6 +262,8 @@ export const zhCNLocale: LocalePlugin = {
     "sidebar.sandboxOn": "沙箱：已开启（新会话跑在一次性工作树里）",
     "sidebar.sandboxNeedsGit": "沙箱需要 Git 仓库",
     "sidebar.sandboxFailed": "创建沙箱工作树失败：{error}",
+    "sidebar.showOlder": "显示 {count} 个更早的会话",
+    "sidebar.hideOlder": "收起更早的会话",
     "sidebar.agentRunning": "Agent 运行中…",
     "sidebar.newActivity": "有新活动",
     "sidebar.newSessionActivity": "会话有新活动",

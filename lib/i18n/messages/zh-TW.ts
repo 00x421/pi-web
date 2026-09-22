@@ -262,6 +262,8 @@ export const zhTWLocale: LocalePlugin = {
     "sidebar.sandboxOn": "沙箱：已開啟（新工作階段在一次性工作樹裡執行）",
     "sidebar.sandboxNeedsGit": "沙箱需要 Git 儲存庫",
     "sidebar.sandboxFailed": "建立沙箱工作樹失敗：{error}",
+    "sidebar.showOlder": "顯示 {count} 個較早的工作階段",
+    "sidebar.hideOlder": "收起較早的工作階段",
     "sidebar.agentRunning": "Agent 執行中…",
     "sidebar.newActivity": "有新活動",
     "sidebar.newSessionActivity": "工作階段有新活動",

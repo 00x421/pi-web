@@ -72,8 +72,7 @@ function parentDisplayName(root: string): string {
  * Sidebar labels for a set of project roots: the bare folder name, with the
  * parent folder prepended when two projects would otherwise share a name
  * (`D:/a/pi-web` vs `D:/b/pi-web` -> `a/pi-web` vs `b/pi-web`).
- */
-export function projectDisplayNames(roots: readonly string[]): Map<string, string> {
+ */export function projectDisplayNames(roots: readonly string[]): Map<string, string> {
   const buckets = new Map<string, string[]>();
   for (const root of roots) {
     const name = projectDisplayName(root);
@@ -94,4 +93,28 @@ export function projectDisplayNames(roots: readonly string[]): Map<string, strin
     }
   }
   return labels;
+}
+
+/**
+ * Splits items into the ones touched within `days` and the rest, so a sidebar
+ * group can hide month-old sessions behind a toggle instead of listing them.
+ * Items whose timestamp cannot be read stay visible: never hide what we cannot
+ * date.
+ */
+export function splitByAge<T>(
+  items: readonly T[],
+  days: number,
+  getTimestamp: (item: T) => string | number | undefined,
+  now: number = Date.now(),
+): { recent: T[]; older: T[] } {
+  const cutoff = now - days * 24 * 60 * 60 * 1000;
+  const recent: T[] = [];
+  const older: T[] = [];
+  for (const item of items) {
+    const raw = getTimestamp(item);
+    const time = typeof raw === "number" ? raw : raw ? Date.parse(raw) : Number.NaN;
+    if (Number.isFinite(time) && time < cutoff) older.push(item);
+    else recent.push(item);
+  }
+  return { recent, older };
 }

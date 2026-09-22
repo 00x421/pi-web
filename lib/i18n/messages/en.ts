@@ -262,6 +262,8 @@ export const enLocale: LocalePlugin = {
     "sidebar.sandboxOn": "Sandbox on — new sessions run in a throwaway worktree",
     "sidebar.sandboxNeedsGit": "Sandbox needs a Git repository",
     "sidebar.sandboxFailed": "Could not create the sandbox worktree: {error}",
+    "sidebar.showOlder": "Show {count} older session(s)",
+    "sidebar.hideOlder": "Hide older sessions",
     "sidebar.agentRunning": "Agent running…",
     "sidebar.newActivity": "New activity",
     "sidebar.newSessionActivity": "New session activity",
