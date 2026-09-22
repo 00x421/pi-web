@@ -338,6 +338,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.retrying": "正在重试（{attempt}/{max}）…",
     "chat.dropAttachFailed": "拖入的文件上传失败：{error}",
     "chat.dropCopied": "已把 {count} 个文件复制到附件目录（在本项目里没找到）",
+    "chat.dropResolving": "正在解析拖入的文件…",
     "chat.loadingCommands": "正在加载命令...",
     "chat.slashCommands": "斜杠命令 · {label}",
     "chat.tabEnter": "Tab / Enter",

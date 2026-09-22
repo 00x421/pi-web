@@ -280,7 +280,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput, setNoticePaused, addNotice,
+    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput, setNoticePaused, addNotice, removeNotice,
     isAutoModelSelection,
     agentPhase,
     isNew,
@@ -721,6 +721,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     // attachments directory first and the input receives the stored path.
     const attachments = files.filter((file) => !file.type.startsWith("image/"));
     if (attachments.length === 0) return;
+
+    // Resolving walks the project tree, so it can take a few seconds. Only speak
+    // up when it actually does, otherwise every drop flickers a notice.
+    const pendingNoticeId = "chat.dropPending";
+    let pendingShown = false;
+    const pendingTimer = setTimeout(() => {
+      pendingShown = true;
+      addNotice({ id: pendingNoticeId, type: "info", message: t("chat.dropResolving") });
+    }, 400);
+
     try {
       const projectCwd = session?.cwd ?? newSessionCwd ?? undefined;
       const inProject = projectCwd
@@ -742,8 +752,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           error: uploadError instanceof Error ? uploadError.message : String(uploadError),
         }),
       });
+    } finally {
+      clearTimeout(pendingTimer);
+      if (pendingShown) removeNotice(pendingNoticeId);
     }
-  }, [chatInputRef, addNotice, t, session?.cwd, newSessionCwd]);
+  }, [chatInputRef, addNotice, removeNotice, t, session?.cwd, newSessionCwd]);
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 

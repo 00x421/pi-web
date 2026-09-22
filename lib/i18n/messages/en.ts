@@ -338,6 +338,7 @@ export const enLocale: LocalePlugin = {
     "chat.retrying": "Retrying ({attempt}/{max})…",
     "chat.dropAttachFailed": "Could not attach the dropped file: {error}",
     "chat.dropCopied": "Copied {count} file(s) to the attachments folder — not found inside this project",
+    "chat.dropResolving": "Resolving dropped file…",
     "chat.loadingCommands": "Loading commands...",
     "chat.slashCommands": "Slash commands · {label}",
     "chat.tabEnter": "Tab / Enter",

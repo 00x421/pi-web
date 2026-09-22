@@ -828,6 +828,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     });
   }, []);
 
+  /** Dismisses a notice added with an explicit id (used for progress notices). */
+  const removeNotice = useCallback((id: string) => {
+    dispatchNotice({ type: "remove", id });
+  }, []);
+
   const handleExtensionUiRequest = useCallback((request: ExtensionUiRequest) => {
     if (isBlockingExtensionUiRequest(request)) onAttentionNeeded?.(request);
 
@@ -2185,6 +2190,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleBuiltinSlashCommand,
     setNoticePaused: setPausedNoticeId,
     addNotice,
+    removeNotice,
     handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages, loadContext,
     scrollToBottom, scrollUserMsgToTop, scrollToMessage,
     dispatch, setAgentRunning, setForkingEntryId,
