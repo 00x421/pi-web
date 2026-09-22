@@ -1,4 +1,36 @@
 import { ATTACHMENTS_FORM_FIELD } from "./attachments";
+import { documentLabel } from "./document-text";
+
+export interface ExtractedDocument {
+  kind: string;
+  text: string;
+  truncated: boolean;
+  chars: number;
+}
+
+/**
+ * Converts a dropped document into plain text. Returns null when the file needs
+ * no conversion (or cannot be read), so callers can simply skip it.
+ */
+export async function extractDocument(filePath: string): Promise<ExtractedDocument | null> {
+  try {
+    const response = await fetch("/api/documents/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: filePath }),
+    });
+    if (!response.ok) return null;
+    const body = await response.json() as ExtractedDocument;
+    return body?.text ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `【报告.docx】\n…text…` block inserted into the prompt for one document. */
+export function formatDocumentBlock(document: ExtractedDocument, filePath: string): string {
+  return `【${documentLabel(filePath)}】\n${document.text}`;
+}
 
 /**
  * Copies dropped files to the server and returns the absolute paths it stored

@@ -17,7 +17,7 @@ import { AnsiText } from "./AnsiText";
 import { useI18n } from "@/hooks/useI18n";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
-import { resolveProjectDrops, uploadDroppedFiles } from "@/lib/attachments-client";
+import { extractDocument, formatDocumentBlock, resolveProjectDrops, uploadDroppedFiles } from "@/lib/attachments-client";
 import { buildAtMentionText } from "@/lib/file-fuzzy";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
@@ -739,11 +739,34 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       const remaining = attachments.filter((file) => !inProject.has(file.name));
       const uploaded = remaining.length > 0 ? await uploadDroppedFiles(remaining) : [];
       const paths = [...inProject.values(), ...uploaded];
-      chatInputRef?.current?.insertText(paths.map((filePath) => buildAtMentionText(filePath, false)).join(""));
+
+      // Documents arrive as text: the agent cannot open a .docx by itself, so the
+      // extracted content follows the path in the same message. Only the first
+      // few documents are read, to keep one drop from flooding the prompt.
+      const blocks: string[] = [];
+      let extractedChars = 0;
+      let truncatedAny = false;
+      for (const filePath of paths.slice(0, 3)) {
+        const document = await extractDocument(filePath);
+        if (!document) continue;
+        blocks.push(formatDocumentBlock(document, filePath));
+        extractedChars += document.chars;
+        truncatedAny = truncatedAny || document.truncated;
+      }
+
+      const mentions = paths.map((filePath) => buildAtMentionText(filePath, false)).join("");
+      chatInputRef?.current?.insertText(blocks.length > 0 ? `${mentions}\n${blocks.join("\n\n")}` : mentions);
+
       // Say where a copy landed: the alternative — silently referencing a copy of
       // a file that lives elsewhere — is what makes this feature look broken.
       if (uploaded.length > 0) {
         addNotice({ type: "info", message: t("chat.dropCopied", { count: uploaded.length }) });
+      }
+      if (extractedChars > 0) {
+        addNotice({
+          type: "info",
+          message: t(truncatedAny ? "chat.docExtractedTruncated" : "chat.docExtracted", { chars: extractedChars }),
+        });
       }
     } catch (uploadError) {
       addNotice({

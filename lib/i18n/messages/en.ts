@@ -345,6 +345,8 @@ export const enLocale: LocalePlugin = {
     "chat.dropAttachFailed": "Could not attach the dropped file: {error}",
     "chat.dropCopied": "Copied {count} file(s) to the attachments folder — not found inside this project",
     "chat.dropResolving": "Resolving dropped file…",
+    "chat.docExtracted": "Extracted {chars} characters from the document",
+    "chat.docExtractedTruncated": "Extracted {chars} characters from the document (the rest was cut)",
     "chat.loadingCommands": "Loading commands...",
     "chat.slashCommands": "Slash commands · {label}",
     "chat.tabEnter": "Tab / Enter",

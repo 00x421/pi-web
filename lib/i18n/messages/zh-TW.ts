@@ -345,6 +345,8 @@ export const zhTWLocale: LocalePlugin = {
     "chat.dropAttachFailed": "拖入的檔案上傳失敗：{error}",
     "chat.dropCopied": "已將 {count} 個檔案複製到附件目錄（在本專案裡沒找到）",
     "chat.dropResolving": "正在解析拖入的檔案…",
+    "chat.docExtracted": "已擷取文件內容（{chars} 字）",
+    "chat.docExtractedTruncated": "已擷取文件內容（{chars} 字，超出部分已截斷）",
     "chat.loadingCommands": "正在載入命令...",
     "chat.slashCommands": "斜線命令 · {label}",
     "chat.tabEnter": "Tab / Enter",
