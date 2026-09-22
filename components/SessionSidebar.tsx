@@ -6,7 +6,7 @@ import { listSessionFamilies } from "@/lib/session-family";
 import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
-import { getProjectActivity, getRecentProjects, projectDisplayName, projectDisplayNames, sessionsForProject, splitByAge } from "@/lib/project-groups";
+import { getProjectActivity, getRecentProjects, projectDisplayName, projectDisplayNames, sessionsForProject } from "@/lib/project-groups";
 import { readGroupExpanded, readHiddenProjects, readIsolatedProjects, setGroupExpanded, setProjectHidden, setProjectIsolated, workspaceKeyOf } from "@/lib/workspace-memory";
 import { getVisibleRowRange, rowOffsets, totalRowHeight } from "@/lib/virtual-list";
 import { formatRelativeTime } from "@/lib/i18n/format";
@@ -20,10 +20,6 @@ import { SessionSearch } from "./SessionSearch";
 const SESSION_LIST_ITEM_HEIGHT = 54;
 /** Height of a project group header row in the session list. */
 const GROUP_HEADER_HEIGHT = 32;
-/** "Show older sessions" toggle row. */
-const OLDER_ROW_HEIGHT = 30;
-/** Sessions untouched for longer than this are hidden behind that toggle. */
-const OLDER_THAN_DAYS = 7;
 /** "Show N hidden projects" row at the end of the group list. */
 const HIDDEN_ROW_HEIGHT = 30;
 
@@ -1138,7 +1134,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // session is open), so the sidebar always shows where you are.
   const storedGroupState = useMemo(() => readGroupExpanded(), []);
   const [groupOverrides, setGroupOverrides] = useState<Record<string, boolean>>({});
-  const [showOlderProjects, setShowOlderProjects] = useState<Record<string, boolean>>({});
   const autoExpandedKey = selectedProject?.key ?? projects[0]?.key;
   const isGroupExpanded = useCallback(
     (key: string) => groupOverrides[key] ?? storedGroupState[key] ?? key === autoExpandedKey,
@@ -1195,7 +1190,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         sessionCount: number;
       }
     | { kind: "session"; key: string; height: number; family: ReturnType<typeof listSessionFamilies>[number] }
-    | { kind: "older"; key: string; height: number; projectKey: string; count: number; shown: boolean }
     | { kind: "hidden"; key: string; height: number; count: number };
 
   const sidebarRows = useMemo(() => {
@@ -1210,28 +1204,18 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         sessionCount: sessions.length,
       });
       if (!isGroupExpanded(project.key)) continue;
+      // Newest first, with no second collapse rule: folding old sessions away
+      // only hid the one session somebody was looking for.
       const families = listSessionFamilies(sessions);
-      const { recent, older } = splitByAge(families, OLDER_THAN_DAYS, (family) => family.latestModified);
-      const showOlder = showOlderProjects[project.key] ?? false;
-      for (const family of showOlder ? families : recent) {
+      for (const family of families) {
         rows.push({ kind: "session", key: `session:${family.root.id}`, height: SESSION_LIST_ITEM_HEIGHT, family });
-      }
-      if (older.length > 0) {
-        rows.push({
-          kind: "older",
-          key: `older:${project.key}`,
-          height: OLDER_ROW_HEIGHT,
-          projectKey: project.key,
-          count: older.length,
-          shown: showOlder,
-        });
       }
     }
     if (hiddenProjectCount > 0) {
       rows.push({ kind: "hidden", key: "hidden-projects", height: HIDDEN_ROW_HEIGHT, count: hiddenProjectCount });
     }
     return rows;
-  }, [visibleProjects, allSessions, isGroupExpanded, showOlderProjects, hiddenProjectCount]);
+  }, [visibleProjects, allSessions, isGroupExpanded, hiddenProjectCount]);
 
   const rowHeights = useMemo(() => sidebarRows.map((row) => row.height), [sidebarRows]);
   const rowTopOffsets = useMemo(() => rowOffsets(rowHeights), [rowHeights]);
@@ -1879,47 +1863,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             {renderedRows.map(({ index: rowIndex, row }) => {
               const rowStyle = { position: "absolute" as const, top: rowTopOffsets[rowIndex], left: 0, right: 0 };
 
-              if (row.kind === "older") {
-                return (
-                  <div key={row.key} style={rowStyle}>
-                    <button
-                      type="button"
-                      onClick={() => setShowOlderProjects((previous) => ({ ...previous, [row.projectKey]: !row.shown }))}
-                      aria-expanded={row.shown}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        width: "100%",
-                        height: OLDER_ROW_HEIGHT,
-                        padding: "0 10px 0 24px",
-                        background: "none",
-                        border: "none",
-                        color: "var(--text-dim)",
-                        cursor: "pointer",
-                        fontSize: 11,
-                        textAlign: "left",
-                      }}
-                    >
-                      <svg
-                        width="9"
-                        height="9"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                        style={{ flexShrink: 0, transform: row.shown ? "rotate(90deg)" : "none", transition: "transform 0.12s ease" }}
-                      >
-                        <polyline points="9 6 15 12 9 18" />
-                      </svg>
-                      {row.shown ? t("sidebar.hideOlder") : t("sidebar.showOlder", { count: row.count })}
-                    </button>
-                  </div>
-                );
-              }
 
               if (row.kind === "hidden") {
                 return (
