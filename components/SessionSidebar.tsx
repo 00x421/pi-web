@@ -20,8 +20,6 @@ import { SessionSearch } from "./SessionSearch";
 const SESSION_LIST_ITEM_HEIGHT = 54;
 /** Height of a project group header row in the session list. */
 const GROUP_HEADER_HEIGHT = 32;
-/** "Show N hidden projects" row at the end of the group list. */
-const HIDDEN_ROW_HEIGHT = 30;
 
 /** Trailing separators and Windows case differences must not create a second group. */
 function normalizeRoot(root: string): string {
@@ -1030,24 +1028,26 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     return [selectedProject, ...recentProjects];
   }, [recentProjects, selectedProject]);
   const [hiddenProjects, setHiddenProjects] = useState<Record<string, boolean>>(() => readHiddenProjects());
+  // Hiding removes a project from the list, and nothing else: sessions are never
+  // deleted, and the group comes back by picking its directory again at the top.
   const visibleProjects = useMemo(
-    () => projects.filter((project) => !hiddenProjects[project.key] || project.key === selectedProject?.key),
-    [projects, hiddenProjects, selectedProject],
+    () => projects.filter((project) => !hiddenProjects[project.key]),
+    [projects, hiddenProjects],
   );
-  const hiddenProjectCount = useMemo(
-    () => projects.filter((project) => hiddenProjects[project.key] && project.key !== selectedProject?.key).length,
-    [projects, hiddenProjects, selectedProject],
-  );
+  const [restoredCwd, setRestoredCwd] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selectedCwd || selectedCwd === restoredCwd) return;
+    setRestoredCwd(selectedCwd);
+    const target = normalizeRoot(selectedCwd);
+    const hidden = projects.find((project) => normalizeRoot(project.root) === target && hiddenProjects[project.key]);
+    if (!hidden) return;
+    setProjectHidden(hidden.key, false);
+    setHiddenProjects((previous) => ({ ...previous, [hidden.key]: false }));
+  }, [selectedCwd, restoredCwd, projects, hiddenProjects]);
   const hideProject = useCallback((key: string) => {
     setProjectHidden(key, true);
     setHiddenProjects((previous) => ({ ...previous, [key]: true }));
   }, []);
-  const showHiddenProjects = useCallback(() => {
-    for (const project of projects) {
-      if (hiddenProjects[project.key]) setProjectHidden(project.key, false);
-    }
-    setHiddenProjects({});
-  }, [projects, hiddenProjects]);
 
   // Branch per group: the header of each group says which branch that project is
   // on, so a single git label at the top is no longer needed to tell them apart.
@@ -1189,8 +1189,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         project: (typeof recentProjects)[number];
         sessionCount: number;
       }
-    | { kind: "session"; key: string; height: number; family: ReturnType<typeof listSessionFamilies>[number] }
-    | { kind: "hidden"; key: string; height: number; count: number };
+    | { kind: "session"; key: string; height: number; family: ReturnType<typeof listSessionFamilies>[number] };
 
   const sidebarRows = useMemo(() => {
     const rows: SidebarRow[] = [];
@@ -1211,11 +1210,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         rows.push({ kind: "session", key: `session:${family.root.id}`, height: SESSION_LIST_ITEM_HEIGHT, family });
       }
     }
-    if (hiddenProjectCount > 0) {
-      rows.push({ kind: "hidden", key: "hidden-projects", height: HIDDEN_ROW_HEIGHT, count: hiddenProjectCount });
-    }
     return rows;
-  }, [visibleProjects, allSessions, isGroupExpanded, hiddenProjectCount]);
+  }, [visibleProjects, allSessions, isGroupExpanded]);
 
   const rowHeights = useMemo(() => sidebarRows.map((row) => row.height), [sidebarRows]);
   const rowTopOffsets = useMemo(() => rowOffsets(rowHeights), [rowHeights]);
@@ -1863,49 +1859,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             {renderedRows.map(({ index: rowIndex, row }) => {
               const rowStyle = { position: "absolute" as const, top: rowTopOffsets[rowIndex], left: 0, right: 0 };
 
-
-              if (row.kind === "hidden") {
-                return (
-                  <div key={row.key} style={rowStyle}>
-                    <button
-                      type="button"
-                      onClick={showHiddenProjects}
-                      title={t("sidebar.showHiddenTitle")}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        width: "100%",
-                        height: HIDDEN_ROW_HEIGHT,
-                        padding: "0 10px 0 24px",
-                        background: "none",
-                        border: "none",
-                        color: "var(--text-dim)",
-                        cursor: "pointer",
-                        fontSize: 11,
-                        textAlign: "left",
-                      }}
-                    >
-                      <svg
-                        width="11"
-                        height="11"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                        style={{ flexShrink: 0 }}
-                      >
-                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M1 1l22 22" />
-                        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-                      </svg>
-                      {t("sidebar.showHidden", { count: row.count })}
-                    </button>
-                  </div>
-                );
-              }
 
               if (row.kind === "header") {
                 const activity = projectActivity.get(row.project.key);
