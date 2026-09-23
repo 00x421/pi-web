@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { isPermissionMode, readPermissionMode, writePermissionMode } from "@/lib/permission-mode";
 
 export const runtime = "nodejs";
@@ -13,6 +14,13 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  // This flips a global security switch, so it takes the same gate as the other
+  // mutating endpoints: same-origin (or a non-browser client, which sends no
+  // Origin) and a JSON body — a text/plain form POST from another site would
+  // otherwise skip the CORS preflight and still parse as JSON here.
+  if (!isApiRequestAllowed(request) || !hasJsonContentType(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const body = await request.json().catch(() => null) as { mode?: unknown } | null;
   if (!isPermissionMode(body?.mode)) {
     return NextResponse.json({ error: "mode must be strict, ask or yolo" }, { status: 400 });

@@ -2380,7 +2380,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 backdropFilter: "blur(10px)",
               } : null),
             }}>
-            {!isStreaming && onThinkingLevelChange && (
+            {!isStreaming && (
               <PermissionModeSelect />
             )}
             {!isStreaming && onThinkingLevelChange && (
