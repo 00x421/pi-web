@@ -19,11 +19,17 @@ interface PermissionModeState {
  * The menu opens upward — the input bar sits at the bottom of the window, so a
  * downward menu would be clipped by the edge.
  */
-export function PermissionModeSelect() {
+export function PermissionModeSelect({ disabled = false }: { disabled?: boolean }) {
   const { t } = useI18n();
   const [state, setState] = useState<PermissionModeState | null>(null);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement>(null);
+
+  // Upstream keeps the neighbouring thinking control mounted but disabled while a
+  // turn streams; this control follows the same shape so the row does not jump.
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,7 +89,10 @@ export function PermissionModeSelect() {
     <span ref={rootRef} style={{ position: "relative", display: "inline-flex" }}>
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          if (!disabled) setOpen((value) => !value);
+        }}
+        disabled={disabled}
         title={t("chat.permissionModeTitle")}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -95,7 +104,8 @@ export function PermissionModeSelect() {
           border: "none",
           padding: 0,
           color: accent,
-          cursor: "pointer",
+          cursor: disabled ? "default" : "pointer",
+          opacity: disabled ? 0.55 : 1,
           font: "inherit",
           fontSize: 11,
         }}
@@ -130,7 +140,7 @@ export function PermissionModeSelect() {
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
-      {open && (
+      {open && !disabled && (
         <div
           role="listbox"
           style={{

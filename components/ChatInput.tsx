@@ -2396,9 +2396,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 backdropFilter: "blur(10px)",
               } : null),
             }}>
-            {!isStreaming && (
-              <PermissionModeSelect />
-            )}
+            <PermissionModeSelect disabled={isStreaming} />
             {onThinkingLevelChange && (
               <div ref={thinkingDropdownRef} style={{ position: "relative" }}>
                 <button
