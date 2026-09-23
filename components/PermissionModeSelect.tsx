@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 
+type PermissionMode = "strict" | "ask" | "yolo";
+
 interface PermissionModeState {
   available: boolean;
-  yolo: boolean;
+  mode: PermissionMode;
 }
 
 /**
@@ -31,7 +33,7 @@ export function PermissionModeSelect() {
         if (!cancelled) setState(body);
       })
       .catch(() => {
-        if (!cancelled) setState({ available: false, yolo: false });
+        if (!cancelled) setState({ available: false, mode: "ask" });
       });
     return () => {
       cancelled = true;
@@ -54,13 +56,13 @@ export function PermissionModeSelect() {
     };
   }, [open]);
 
-  const change = useCallback((yolo: boolean) => {
+  const change = useCallback((mode: PermissionMode) => {
     setOpen(false);
-    setState((previous) => (previous ? { ...previous, yolo } : previous));
+    setState((previous) => (previous ? { ...previous, mode } : previous));
     void fetch("/api/permission-mode", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ yolo }),
+      body: JSON.stringify({ mode }),
     })
       .then((response) => response.json())
       .then((body: PermissionModeState) => setState(body))
@@ -69,10 +71,13 @@ export function PermissionModeSelect() {
 
   if (!state?.available) return null;
 
-  const options: Array<{ yolo: boolean; label: string; hint: string }> = [
-    { yolo: false, label: t("chat.permissionAsk"), hint: t("chat.permissionAskHint") },
-    { yolo: true, label: t("chat.permissionYolo"), hint: t("chat.permissionYoloHint") },
-  ];
+  const labels: Record<PermissionMode, { label: string; hint: string }> = {
+    strict: { label: t("chat.permissionStrict"), hint: t("chat.permissionStrictHint") },
+    ask: { label: t("chat.permissionAsk"), hint: t("chat.permissionAskHint") },
+    yolo: { label: t("chat.permissionYolo"), hint: t("chat.permissionYoloHint") },
+  };
+  const order: PermissionMode[] = ["strict", "ask", "yolo"];
+  const accent = state.mode === "yolo" ? "#f0a020" : state.mode === "strict" ? "#4ade80" : "var(--text-dim)";
 
   return (
     <span ref={rootRef} style={{ position: "relative", display: "inline-flex" }}>
@@ -89,7 +94,7 @@ export function PermissionModeSelect() {
           background: "none",
           border: "none",
           padding: 0,
-          color: state.yolo ? "#f0a020" : "var(--text-dim)",
+          color: accent,
           cursor: "pointer",
           font: "inherit",
           fontSize: 11,
@@ -109,7 +114,7 @@ export function PermissionModeSelect() {
         >
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
         </svg>
-        {state.yolo ? t("chat.permissionYolo") : t("chat.permissionAsk")}
+        {labels[state.mode].label}
         <svg
           width="9"
           height="9"
@@ -133,7 +138,7 @@ export function PermissionModeSelect() {
             bottom: "100%",
             left: 0,
             marginBottom: 6,
-            minWidth: 190,
+            minWidth: 210,
             padding: 4,
             border: "1px solid color-mix(in srgb, var(--border) 72%, transparent)",
             borderRadius: 10,
@@ -143,13 +148,13 @@ export function PermissionModeSelect() {
             zIndex: 30,
           }}
         >
-          {options.map((option) => (
+          {order.map((mode) => (
             <button
-              key={String(option.yolo)}
+              key={mode}
               type="button"
               role="option"
-              aria-selected={state.yolo === option.yolo}
-              onClick={() => change(option.yolo)}
+              aria-selected={state.mode === mode}
+              onClick={() => change(mode)}
               style={{
                 display: "flex",
                 flexDirection: "column",
@@ -157,7 +162,7 @@ export function PermissionModeSelect() {
                 gap: 1,
                 width: "100%",
                 padding: "6px 8px",
-                background: state.yolo === option.yolo ? "var(--bg-selected)" : "none",
+                background: state.mode === mode ? "var(--bg-selected)" : "none",
                 border: "none",
                 borderRadius: 7,
                 color: "var(--text)",
@@ -165,8 +170,8 @@ export function PermissionModeSelect() {
                 textAlign: "left",
               }}
             >
-              <span style={{ fontSize: 12 }}>{option.label}</span>
-              <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{option.hint}</span>
+              <span style={{ fontSize: 12 }}>{labels[mode].label}</span>
+              <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{labels[mode].hint}</span>
             </button>
           ))}
           <div style={{ padding: "4px 8px 2px", fontSize: 10, color: "var(--text-dim)" }}>

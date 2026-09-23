@@ -358,6 +358,8 @@ export const enLocale: LocalePlugin = {
     "chat.permissionModeTitle": "Approval mode (global, applies to every session)",
     "chat.permissionAsk": "Ask every time",
     "chat.permissionAskHint": "Rules marked \"ask\" pop a confirmation",
+    "chat.permissionStrict": "Ask for everything",
+    "chat.permissionStrictHint": "Even allowed steps ask before running",
     "chat.permissionYolo": "Auto-approve",
     "chat.permissionYoloHint": "Everything except \"deny\" rules runs without asking",
     "chat.permissionModeGlobal": "Global setting — every session",

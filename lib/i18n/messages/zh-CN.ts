@@ -358,6 +358,8 @@ export const zhCNLocale: LocalePlugin = {
     "chat.permissionModeTitle": "审批模式（全局设置，影响所有会话）",
     "chat.permissionAsk": "每次询问",
     "chat.permissionAskHint": "标为 ask 的规则会弹框问你",
+    "chat.permissionStrict": "严格（每步都问）",
+    "chat.permissionStrictHint": "连允许的操作也要先问过你",
     "chat.permissionYolo": "自动批准",
     "chat.permissionYoloHint": "除标为 deny 的规则外，一律不问直接执行",
     "chat.permissionModeGlobal": "全局设置 —— 影响所有会话",

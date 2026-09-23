@@ -358,6 +358,8 @@ export const zhTWLocale: LocalePlugin = {
     "chat.permissionModeTitle": "審批模式（全域設定，影響所有工作階段）",
     "chat.permissionAsk": "每次詢問",
     "chat.permissionAskHint": "標為 ask 的規則會彈框詢問",
+    "chat.permissionStrict": "嚴格（每步都問）",
+    "chat.permissionStrictHint": "連允許的操作也要先問過你",
     "chat.permissionYolo": "自動批准",
     "chat.permissionYoloHint": "除標為 deny 的規則外，一律不問直接執行",
     "chat.permissionModeGlobal": "全域設定 —— 影響所有工作階段",
