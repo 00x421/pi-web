@@ -7,7 +7,7 @@ import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, projectDisplayName, projectDisplayNames, sessionsForProject } from "@/lib/project-groups";
-import { readGroupExpanded, readHiddenProjects, readIsolatedProjects, setGroupExpanded, setProjectHidden, setProjectIsolated, workspaceKeyOf } from "@/lib/workspace-memory";
+import { readGroupExpanded, readHiddenProjects, setGroupExpanded, setProjectHidden, workspaceKeyOf } from "@/lib/workspace-memory";
 import { getVisibleRowRange, rowOffsets, totalRowHeight } from "@/lib/virtual-list";
 import type { GitCommit } from "@/lib/git-log";
 import { formatRelativeTime } from "@/lib/i18n/format";
@@ -435,21 +435,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [wtNewBranch, setWtNewBranch] = useState("");
   const [wtError, setWtError] = useState<string | null>(null);
 
-  // Sandbox: projects whose new sessions should run in a throwaway worktree so
-  // an agent cannot modify the real checkout.
-  const storedIsolatedProjects = useMemo(() => readIsolatedProjects(), []);
-  const [isolatedOverrides, setIsolatedOverrides] = useState<Record<string, boolean>>({});
-  const [sandboxNotice, setSandboxNotice] = useState<string | null>(null);
-  const isProjectIsolated = useCallback(
-    (key: string) => isolatedOverrides[key] ?? storedIsolatedProjects[key] ?? false,
-    [isolatedOverrides, storedIsolatedProjects],
-  );
-  const toggleIsolation = useCallback((key: string) => {
-    const next = !isProjectIsolated(key);
-    setIsolatedOverrides((previous) => ({ ...previous, [key]: next }));
-    setProjectIsolated(key, next);
-    setSandboxNotice(null);
-  }, [isProjectIsolated]);
   const [wtBusy, setWtBusy] = useState(false);
   const [wtConfirmRemove, setWtConfirmRemove] = useState<string | null>(null);
   const [worktreeLoadingCwd, setWorktreeLoadingCwd] = useState<string | null>(null);
@@ -1074,37 +1059,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 
-    // Sandbox: open the session in a throwaway worktree so the agent never
-    // touches the real checkout. Falls back to the directory when Git cannot
-    // provide one, so the button always does something useful.
-    if (isProjectIsolated(root)) {
-      setSandboxNotice(null);
-      try {
-        const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
-        const res = await fetch("/api/worktrees", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cwd: root, branch: `pi/sandbox-${stamp}` }),
-        });
-        const data = await res.json().catch(() => ({})) as { path?: string; error?: string };
-        if (res.ok && data.path) {
-          setSelectedCwd(data.path);
-          onNewSession?.(tempId, data.path);
-          return;
-        }
-        setSandboxNotice(t("sidebar.sandboxFailed", {
-          error: data.error ?? t("sidebar.sandboxNeedsGit"),
-        }));
-      } catch (error) {
-        setSandboxNotice(t("sidebar.sandboxFailed", {
-          error: error instanceof Error ? error.message : String(error),
-        }));
-      }
-    }
-
     setSelectedCwd(root);
     onNewSession?.(tempId, root);
-  }, [onNewSession, isProjectIsolated, t]);
+  }, [onNewSession]);
 
     const recentProjects = useMemo(() => getRecentProjects(allSessions), [allSessions]);
 
@@ -1969,14 +1926,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         )}
       </div>
 
-      {/* Sandbox failures land here: the new-session button still opens a
-          session in the real directory, and the reason is shown above it. */}
-      {sandboxNotice && (
-        <div style={{ padding: "6px 12px", fontSize: 11, lineHeight: 1.4, color: "#f87171", borderBottom: "1px solid var(--border)" }}>
-          {sandboxNotice}
-        </div>
-      )}
-
       {/* Session list */}
       <div
         ref={sessionPaneRef}
@@ -2040,9 +1989,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                       running={activity?.running ?? 0}
                       unread={activity?.unread ?? 0}
                       sessionCount={row.sessionCount}
-                      isolated={isProjectIsolated(row.project.key)}
                       branch={groupBranches[row.project.key] ?? null}
-                      onToggleIsolation={() => toggleIsolation(row.project.key)}
                       onHide={() => hideProject(row.project.key)}
                       onToggle={() => handleGroupClick(row.project)}
                       onNewSession={() => handleNewSessionInProject(row.project.root)}
@@ -2422,7 +2369,7 @@ function showProjectActivity(
   );
 }
 
-/** Project group header: name, badges, sandbox toggle, new-session button. */
+/** Project group header: name, badges, new-session button. */
 function ProjectGroupHeader({
   label,
   title,
@@ -2431,10 +2378,8 @@ function ProjectGroupHeader({
   running,
   unread,
   sessionCount,
-  isolated,
   branch,
   onToggle,
-  onToggleIsolation,
   onHide,
   onNewSession,
 }: {
@@ -2445,10 +2390,8 @@ function ProjectGroupHeader({
   running: number;
   unread: number;
   sessionCount: number;
-  isolated: boolean;
   branch: string | null;
   onToggle: () => void;
-  onToggleIsolation: () => void;
   onHide: () => void;
   onNewSession: () => void;
 }) {
@@ -2577,33 +2520,6 @@ function ProjectGroupHeader({
           <path d="M3 3l18 18" />
           <path d="M10.6 5.1A9 9 0 0 1 12 5c7 0 11 7 11 7a17.8 17.8 0 0 1-3.1 4" />
           <path d="M6.1 6.1A17.5 17.5 0 0 0 1 12s4 7 11 7a9.9 9.9 0 0 0 4-0.8" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        onClick={onToggleIsolation}
-        title={t(isolated ? "sidebar.sandboxOn" : "sidebar.sandboxOff")}
-        aria-label={t(isolated ? "sidebar.sandboxOn" : "sidebar.sandboxOff")}
-        aria-pressed={isolated}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 20,
-          height: 20,
-          flexShrink: 0,
-          background: isolated ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "none",
-          border: "none",
-          borderRadius: 5,
-          color: isolated ? "var(--accent)" : "var(--text-dim)",
-          cursor: "pointer",
-          padding: 0,
-        }}
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-          <line x1="12" y1="22.08" x2="12" y2="12" />
         </svg>
       </button>
       <button

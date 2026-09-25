@@ -100,7 +100,6 @@ export function workspaceKeyOf(session: {
 }
 
 const GROUP_STATE_KEY = "pi-web:group-expanded";
-const ISOLATED_PROJECTS_KEY = "pi-web:isolated-projects";
 
 function readBooleanMap(storageKey: string, storage: StorageLike): Record<string, boolean> {
   const raw = storage.getItem(storageKey);
@@ -164,23 +163,6 @@ export function setGroupExpanded(
  */
 const HIDDEN_PROJECTS_KEY = "pi-web:hidden-projects";
 
-/**
- * Projects whose new sessions should run in a throwaway git worktree instead of
- * the real directory, so an agent cannot touch the working checkout.
- */
-export function readIsolatedProjects(
-  storage: StorageLike | null = getBrowserStorage(),
-): Record<string, boolean> {
-  return readBooleanMapSafe(ISOLATED_PROJECTS_KEY, storage);
-}
-
-export function setProjectIsolated(
-  projectKey: string,
-  isolated: boolean,
-  storage: StorageLike | null = getBrowserStorage(),
-): void {
-  writeBooleanMapEntry(ISOLATED_PROJECTS_KEY, projectKey, isolated, storage);
-}
 
 /** Projects the user hid from the sidebar, keyed by project key. */
 export function readHiddenProjects(
