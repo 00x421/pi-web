@@ -293,7 +293,10 @@ export async function addWorktree(cwd: string, branch: string): Promise<{ path: 
 
 export async function removeWorktree(cwd: string, worktreePath: string, force = false): Promise<void> {
   const worktrees = await listWorktrees(cwd);
-  const target = findWorktreeByPath(worktrees, worktreePath);
+  // Resolve the candidate the way findCurrentWorktreePath does. On Windows a
+  // short 8.3 spelling (C:\Users\LINLIN~1\...) is not the long form git prints,
+  // so an unresolved candidate never matches a listed worktree.
+  const target = findWorktreeByPath(worktrees, realPathOrSelf(worktreePath));
   if (!target) throw new Error(`Not a worktree of this repository: ${worktreePath}`);
   if (target.isMain) throw new Error("Cannot remove the main worktree");
 
